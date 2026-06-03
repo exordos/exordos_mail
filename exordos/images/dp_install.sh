@@ -107,6 +107,35 @@ sudo ln -sf "$VENV_PATH/bin/exordos-universal-agent" "/usr/bin/exordos-universal
 
 deactivate
 
+# Install the mail configure script
+sudo tee /usr/local/bin/exordos-mail-configure > /dev/null <<'CONFIGURE_SCRIPT'
+#!/usr/bin/env bash
+# Configure Postfix and Dovecot from /etc/exordos_metapaas/mail.env
+set -eu
+
+source /etc/exordos_metapaas/mail.env
+
+# Configure Postfix for the instance domain
+postconf -e "myhostname = mail.${MAIL_DOMAIN}"
+postconf -e "mydomain = ${MAIL_DOMAIN}"
+postconf -e "myorigin = \$mydomain"
+postconf -e "virtual_mailbox_domains = ${MAIL_DOMAIN}"
+
+# Set postmaster password (create system account for local delivery)
+echo "postmaster:${MAIL_ROOT_PASSWORD}" | chpasswd
+
+# Ensure vmail directories exist
+mkdir -p "/var/mail/${MAIL_DOMAIN}"
+chown -R vmail:vmail /var/mail/
+
+# Enable and start mail services
+systemctl enable postfix dovecot
+systemctl restart postfix dovecot
+
+echo "Mail server configured for domain: ${MAIL_DOMAIN}"
+CONFIGURE_SCRIPT
+sudo chmod +x /usr/local/bin/exordos-mail-configure
+
 # Install systemd service files
 sudo cp "$GC_PATH/etc/systemd/exordos-metapaas-mail-configure.service" $SYSTEMD_SERVICE_DIR
 sudo cp "$GC_PATH/etc/systemd/exordos-metapaas-mail-agent.service" $SYSTEMD_SERVICE_DIR
