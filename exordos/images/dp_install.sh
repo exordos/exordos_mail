@@ -220,6 +220,8 @@ sudo chmod +x /usr/local/bin/exordos-mail-configure
 
 # Install Python venv
 cd "$GC_PATH"
+# exordos_metapaas is not on PyPI; install from local path before uv sync resolves deps
+uv pip install --no-deps /opt/exordos_metapaas_runtime
 uv sync
 source "$VENV_PATH/bin/activate"
 

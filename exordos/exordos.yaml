@@ -22,6 +22,15 @@ build:
         - .tox
         - output
 
+    # exordos_metapaas runtime: not on PyPI, installed from local path before uv sync
+    - dst: /opt/exordos_metapaas_runtime
+      path:
+        src: ../../exordos_metapaas
+      exclude:
+        - .venv
+        - .tox
+        - output
+
     - dst: /opt/gcl_sdk
       optional: true
       path:
