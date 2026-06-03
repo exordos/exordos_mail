@@ -220,9 +220,9 @@ sudo chmod +x /usr/local/bin/exordos-mail-configure
 
 # Install Python venv
 cd "$GC_PATH"
-# exordos_metapaas is not on PyPI; install from local path before uv sync resolves deps
-uv pip install --no-deps /opt/exordos_metapaas_runtime
-uv sync
+# exordos_metapaas is not on PyPI; build its wheel and pass via --find-links
+uv build --wheel --out-dir /tmp/mail-wheels/ /opt/exordos_metapaas_runtime
+uv sync --find-links /tmp/mail-wheels/
 source "$VENV_PATH/bin/activate"
 
 if [[ "$SDK_DEV_MODE" == "true" ]]; then
