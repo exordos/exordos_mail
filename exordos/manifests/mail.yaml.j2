@@ -1,0 +1,26 @@
+---
+name: "{{ name | default('mail') }}"
+version: "{{ version | default('1.0.0') }}"
+kind: element
+spec:
+  element_image:
+    url: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/{{ name }}/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
+
+  provides:
+    - type: mail
+      display_name: Mail Server
+      description: "Postfix + Dovecot mail server for SMTP/IMAP"
+
+  iam_scopes:
+    - name: mail
+      actions:
+        - create
+        - read
+        - update
+        - delete
+
+  metadata:
+    description: "Mail server PaaS (Postfix SMTP + Dovecot IMAP/POP3)"
+    version: "{{ version | default('1.0.0') }}"
+    author: "Exordos"
+    documentation: "https://exordos.com/docs/mail-server"

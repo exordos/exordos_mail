@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exordos-paas-mail"
+version = "1.0.0"
+description = "Mail server PaaS plugin for MetaPaaS (Postfix + Dovecot)"
+readme = "README.md"
+license = {text = "Proprietary"}
+authors = [
+  {name = "Exordos", email = "dev@exordos.com"}
+]
+requires-python = ">=3.10"
+dependencies = [
+  "sqlalchemy>=2.0",
+  "restalchemy>=0.2",
+  "gcl-iam>=0.1",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "coverage[toml]>=7.0",
+  "mock>=5.0",
+  "boto3>=1.20",
+]
+dev = ["ruff>=0.1", "mypy>=1.0"]
+
+[project.urls]
+homepage = "https://exordos.com"
+
+[project.entry-points."exordos_metapaas.plugins"]
+mail = "exordos_paas_mail"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.isort]
+known-first-party = ["exordos_paas_mail"]
+
+[tool.mypy]
+python_version = "3.10"
+disallow_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+files = "exordos_paas_mail"
+
+[tool.coverage.run]
+branch = true
+source = ["exordos_paas_mail"]
+omit = [
+  "*/tests/*",
+  "*/__pycache__/*",
+  "*/site-packages/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

@@ -1,0 +1,26 @@
+---
+name: mail
+version: 1.0.0
+kind: element
+
+components:
+  - name: cp_code
+    type: python_package
+    source: exordos_paas_mail/
+    outputs:
+      - type: wheel
+        path: dist/exordos_paas_mail-*.whl
+
+  - name: dp_image
+    type: qemu_image
+    packer_config: mail-dp/packer.pkr.hcl
+    outputs:
+      - type: image
+        name: exordos-metapaas-mail-dp.raw.zst
+
+  - name: manifest
+    type: manifest_template
+    source: manifests/mail.yaml.j2
+    outputs:
+      - type: manifest
+        path: mail.yaml
