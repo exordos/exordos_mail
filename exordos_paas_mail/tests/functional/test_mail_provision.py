@@ -1,109 +1,142 @@
-"""Functional tests for mail instance provisioning."""
+#    Copyright 2026 Genesis Corporation.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 
-from __future__ import annotations
+import uuid
 
 import pytest
-import requests
-from typing import Any
+
+import exordos_paas_mail.tests.functional.conftest as mail_conftest
 
 
-@pytest.mark.functional
-class TestMailInstanceProvisioning:
-    """Test mail instance creation and lifecycle."""
+class TestInstanceLifecycle:
+    def test_instance_is_active(self, mail_instance):
+        assert mail_instance["status"] == "ACTIVE"
 
-    def test_create_mail_instance(
-        self,
-        mail_api_client: requests.Session,
-        mail_cp_ip: str,
-    ) -> None:
-        """Test creating a mail instance."""
-        payload = {
-            "name": "test-mail-create",
-            "version": "1.0.0",
-            "domain": "create.test.com",
-            "max_users": 20,
-        }
+    def test_instance_has_ips(self, mail_instance):
+        ips = mail_instance.get("ipsv4", [])
+        assert len(ips) >= 1
 
-        r = mail_api_client.post(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances",
-            json=payload,
-            timeout=30,
+    def test_instance_domain_set(self, mail_instance):
+        assert "." in mail_instance["domain"]
+
+    def test_root_password_hidden(self, mail_instance):
+        assert "root_password" not in mail_instance or mail_instance["root_password"] is None
+
+
+class TestAccountCRUD:
+    def test_create_account(
+        self, mail_api_client, mail_instance_uuid, mail_project_id
+    ):
+        username = f"user-{uuid.uuid4().hex[:8]}"
+        # SHA512-CRYPT hash of "testpass"
+        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        account = mail_conftest.create_account_via_api(
+            mail_api_client,
+            mail_instance_uuid,
+            username,
+            password_hash,
+            mail_project_id,
         )
-
-        assert r.status_code == 201, f"Expected 201, got {r.status_code}: {r.text}"
-        instance = r.json()
-        assert instance["name"] == "test-mail-create"
-        assert instance["domain"] == "create.test.com"
-        assert instance["status"] in ["PENDING", "CREATING"]
+        assert account["username"] == username
+        assert account.get("password_hash") is None  # hidden after create
 
         # Cleanup
-        instance_id = instance["id"]
-        mail_api_client.delete(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances/{instance_id}",
-            timeout=30,
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        mail_api_client.delete(collection, uuid=account["uuid"])
+
+    def test_list_accounts(self, mail_api_client, mail_instance_uuid):
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        accounts = mail_api_client.filter(collection)
+        assert isinstance(accounts, list)
+
+    def test_update_account_quota(
+        self, mail_api_client, mail_instance_uuid, mail_project_id
+    ):
+        username = f"quota-{uuid.uuid4().hex[:8]}"
+        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        account = mail_conftest.create_account_via_api(
+            mail_api_client,
+            mail_instance_uuid,
+            username,
+            password_hash,
+            mail_project_id,
         )
 
-    def test_list_mail_instances(
-        self,
-        mail_api_client: requests.Session,
-        mail_cp_ip: str,
-    ) -> None:
-        """Test listing mail instances."""
-        r = mail_api_client.get(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances",
-            timeout=30,
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        mail_api_client.update(collection, uuid=account["uuid"], quota_mb=512)
+
+        updated = mail_api_client.get(collection, uuid=account["uuid"])
+        assert updated["quota_mb"] == 512
+
+        # Cleanup
+        mail_api_client.delete(collection, uuid=account["uuid"])
+
+    def test_disable_account(
+        self, mail_api_client, mail_instance_uuid, mail_project_id
+    ):
+        username = f"disabled-{uuid.uuid4().hex[:8]}"
+        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        account = mail_conftest.create_account_via_api(
+            mail_api_client,
+            mail_instance_uuid,
+            username,
+            password_hash,
+            mail_project_id,
         )
 
-        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
-        data = r.json()
-        assert "items" in data or isinstance(data, list)
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        mail_api_client.update(collection, uuid=account["uuid"], active=False)
 
-    def test_get_mail_instance(
-        self,
-        mail_api_client: requests.Session,
-        mail_cp_ip: str,
-        mail_instance: dict[str, Any],
-    ) -> None:
-        """Test retrieving a specific mail instance."""
-        instance_id = mail_instance["id"]
-        r = mail_api_client.get(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances/{instance_id}",
-            timeout=30,
+        updated = mail_api_client.get(collection, uuid=account["uuid"])
+        assert updated["active"] is False
+
+        # Cleanup
+        mail_api_client.delete(collection, uuid=account["uuid"])
+
+
+class TestInstanceROFields:
+    def test_domain_read_only_after_create(self, mail_api_client, mail_instance_uuid):
+        with pytest.raises(Exception):
+            mail_api_client.update(
+                mail_conftest.MAIL_INSTANCES,
+                uuid=mail_instance_uuid,
+                domain="new-domain.example.com",
+            )
+
+    def test_disk_size_grow_ok(self, mail_api_client, mail_instance_uuid):
+        instance = mail_api_client.get(
+            mail_conftest.MAIL_INSTANCES, uuid=mail_instance_uuid
         )
-
-        assert r.status_code == 200, f"Expected 200, got {r.status_code}: {r.text}"
-        retrieved = r.json()
-        assert retrieved["id"] == instance_id
-        assert retrieved["domain"] == "test.example.com"
-
-    def test_update_mail_instance(
-        self,
-        mail_api_client: requests.Session,
-        mail_cp_ip: str,
-        mail_instance: dict[str, Any],
-    ) -> None:
-        """Test updating mail instance configuration."""
-        instance_id = mail_instance["id"]
-        update_payload = {
-            "max_users": 50,
-            "backup_enabled": True,
-        }
-
-        r = mail_api_client.patch(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances/{instance_id}",
-            json=update_payload,
-            timeout=30,
+        old_size = instance.get("disk_size", 0)
+        mail_api_client.update(
+            mail_conftest.MAIL_INSTANCES,
+            uuid=mail_instance_uuid,
+            disk_size=old_size + 10,
         )
-
-        # 200 or 204 are both acceptable
-        assert r.status_code in [200, 204], f"Expected 200/204, got {r.status_code}: {r.text}"
-
-        # Verify update
-        r = mail_api_client.get(
-            f"http://{mail_cp_ip}:8080/v1/types/mail/instances/{instance_id}",
-            timeout=30,
+        updated = mail_api_client.get(
+            mail_conftest.MAIL_INSTANCES, uuid=mail_instance_uuid
         )
-        assert r.status_code == 200
-        updated = r.json()
-        assert updated["max_users"] == 50
-        assert updated["backup_enabled"] is True
+        assert updated["disk_size"] == old_size + 10
+
+    def test_disk_size_shrink_fails(self, mail_api_client, mail_instance_uuid):
+        instance = mail_api_client.get(
+            mail_conftest.MAIL_INSTANCES, uuid=mail_instance_uuid
+        )
+        old_size = instance.get("disk_size", 0)
+        with pytest.raises(Exception):
+            mail_api_client.update(
+                mail_conftest.MAIL_INSTANCES,
+                uuid=mail_instance_uuid,
+                disk_size=max(old_size - 1, 1),
+            )

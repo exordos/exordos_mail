@@ -11,3 +11,13 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+# Path on the dataplane (mail) node where the control plane delivers the
+# mail environment config (must match the configure service's EnvironmentFile).
+MAIL_ENV_FILE = "/etc/exordos_metapaas/mail.env"
+
+# Path to the Dovecot passwd-file managed by the DP agent.
+MAIL_USERS_FILE = "/etc/exordos_metapaas/mail.users"
+
+# Path to the Postfix virtual mailbox map managed by the DP agent.
+MAIL_VMAILBOX_FILE = "/etc/postfix/vmailbox"

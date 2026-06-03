@@ -1,57 +1,96 @@
-"""REST API controllers for mail PaaS instances."""
+#    Copyright 2026 Genesis Corporation.
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 
-from __future__ import annotations
+from gcl_iam import controllers as iam_controllers
+from restalchemy.api import constants
+from restalchemy.api import controllers as ra_controllers
+from restalchemy.api import field_permissions as field_p
+from restalchemy.api import resources as ra_resources
 
-from restalchemy.framework import BaseController, CRUD
-from exordos_paas_mail.models import MailInstance
-from exordos_paas_mail.iam_config import IAM_MAIL, IAM_MAIL_CREATE, IAM_MAIL_READ, IAM_MAIL_UPDATE, IAM_MAIL_DELETE
+from exordos_paas_mail import models
 
 
-class MailInstancesController(BaseController):
-    """REST controller for /v1/types/mail/instances."""
+class MailController(ra_controllers.RoutesListController):
+    """Controller for /v1/types/mail/ endpoint"""
 
-    model = MailInstance
-    crud = [CRUD.CREATE, CRUD.READ, CRUD.UPDATE, CRUD.DELETE]
+    __TARGET_PATH__ = "/v1/types/mail/"
 
-    # Field-level permissions based on role
-    fields_permissions = {
-        "owner": {
-            "read": [
-                "id",
-                "project_id",
-                "name",
-                "version",
-                "status",
-                "kind",
-                "created_at",
-                "domain",
-                "max_users",
-                "backup_enabled",
-                "spam_filter_enabled",
-                "virus_scan_enabled",
-                "nodes",
-            ],
-            "write": ["name", "domain", "max_users", "backup_enabled", "spam_filter_enabled", "virus_scan_enabled"],
-        },
-        "operator": {
-            "read": ["id", "project_id", "name", "version", "status", "domain", "max_users"],
-            "write": ["max_users", "backup_enabled", "spam_filter_enabled"],
-        },
-        "viewer": {
-            "read": ["id", "project_id", "name", "version", "status", "domain"],
-            "write": [],
-        },
-    }
 
-    def create(self, **kwargs) -> MailInstance:
-        """Create a new mail instance.
+class MailVersionController(
+    iam_controllers.PolicyBasedWithoutProjectController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "exordos_mail"
+    __policy_name__ = "mail_version"
 
-        Do not set 'kind', 'id', 'status', 'created_at' — they are read-only
-        and will be auto-populated from model.Config and defaults.
-        """
-        # Remove read-only fields if present
-        for field in ["kind", "id", "status", "created_at", "nodes"]:
-            kwargs.pop(field, None)
+    __resource__ = ra_resources.ResourceByRAModel(
+        model_class=models.MailVersion,
+        convert_underscore=False,
+        process_filters=True,
+    )
 
-        instance = MailInstance(**kwargs)
-        return super().create(instance)
+
+class MailInstanceController(
+    iam_controllers.PolicyBasedController,
+    ra_controllers.BaseResourceControllerPaginated,
+):
+    __policy_service_name__ = "exordos_mail"
+    __policy_name__ = "mail_instance"
+
+    __resource__ = ra_resources.ResourceByRAModel(
+        model_class=models.MailInstance,
+        convert_underscore=False,
+        process_filters=True,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "ipsv4": {constants.ALL: field_p.Permissions.RO},
+                "domain": {
+                    constants.ALL: field_p.Permissions.RO,
+                    constants.CREATE: field_p.Permissions.RW,
+                },
+                "root_password": {constants.ALL: field_p.Permissions.HIDDEN},
+            },
+        ),
+    )
+
+
+class MailAccountController(
+    iam_controllers.NestedPolicyBasedController,
+    ra_controllers.BaseNestedResourceControllerPaginated,
+):
+    __policy_service_name__ = "exordos_mail"
+    __policy_name__ = "account"
+    __pr_name__ = "instance"
+
+    __resource__ = ra_resources.ResourceByRAModel(
+        model_class=models.MailAccount,
+        convert_underscore=False,
+        process_filters=True,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "username": {
+                    constants.ALL: field_p.Permissions.RO,
+                    constants.CREATE: field_p.Permissions.RW,
+                },
+                "password_hash": {
+                    constants.ALL: field_p.Permissions.HIDDEN,
+                    constants.CREATE: field_p.Permissions.RW,
+                    constants.UPDATE: field_p.Permissions.RW,
+                },
+            },
+        ),
+    )

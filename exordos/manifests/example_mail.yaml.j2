@@ -1,0 +1,36 @@
+name: "example_mail"
+description: "Example: a mail instance hosted by the metapaas control plane, created declaratively via the mail-aas element API"
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+  mail-aas:
+    from_version: "0.0.0"
+
+resources:
+
+  # A mail instance in the metapaas project. The metapaas db-back core-agent
+  # reconciles this into the metapaas DB (kind em_mail-aas_types_mail_instances);
+  # the mail plugin's infra builder then launches a Postfix+Dovecot dataplane node.
+  $mail-aas.types.mail.instances:
+    example_mail:
+      name: "example-mail"
+      project_id: "4d657461-0000-0000-0000-000000000002"
+      domain: "example.local"
+      cpu: 1
+      ram: 1024
+      disk_size: 10
+      version: $example_mail.imports.$postfix_1:uuid
+
+imports:
+  postfix_1:
+    element: "$mail-aas"
+    kind: "resource"
+    link: "$mail-aas.types.mail.versions.$postfix_1"
+
+exports:
+  instance:
+    link: "$mail-aas.types.mail.instances.$example_mail"

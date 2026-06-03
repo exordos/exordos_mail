@@ -1,0 +1,16 @@
+[Unit]
+Description=Exordos MetaPaaS Mail Server Configure
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/exordos_metapaas/mail.env
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/exordos_metapaas/mail.env
+ExecStart=/usr/local/bin/exordos-mail-configure
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target

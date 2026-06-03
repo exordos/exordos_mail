@@ -11,3 +11,19 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+from restalchemy.dm import filters as dm_filters
+
+
+def remove_all_dm(dm_class, filters, session=None, **kwargs):
+    for dm in dm_class.objects.get_all(filters=filters, session=session):
+        dm.delete(session=session, **kwargs)
+
+
+def remove_nested_dm(dm_class, parent_field_name, parent, session=None, **kwargs):
+    remove_all_dm(
+        dm_class,
+        filters={parent_field_name: dm_filters.EQ(parent)},
+        session=session,
+        **kwargs,
+    )

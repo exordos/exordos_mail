@@ -1,79 +1,102 @@
-[build-system]
-requires = ["setuptools>=65", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "exordos-paas-mail"
-version = "1.0.0"
-description = "Mail server PaaS plugin for MetaPaaS (Postfix + Dovecot)"
+name = "exordos_paas_mail"
+description = "Mail server PaaS plugin for the Exordos MetaPaaS runtime (Postfix + Dovecot)"
 readme = "README.md"
-license = {text = "Proprietary"}
-authors = [
-  {name = "Exordos", email = "dev@exordos.com"}
-]
+authors = [{name = "Genesis Corporation", email = "mail@gmelikov.ru"}]
+dynamic = ["version"]
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 dependencies = [
-  "sqlalchemy>=2.0",
-  "restalchemy>=0.2",
-  "gcl-iam>=0.1",
+    "oslo.config>=3.22.2,<10.0.0",
+    "restalchemy>=15.0.0,<16.0.0",
+    "gcl_iam>=1.0.3,<2.0.0",
+    "gcl_looper>=1.2.3,<2.0.0",
+    "gcl_sdk>=3.0.0,<4.0.0",
+    "exordos_metapaas>=0.0.5",
 ]
 
-[project.optional-dependencies]
-test = [
-  "pytest>=7.0",
-  "pytest-cov>=4.0",
-  "coverage[toml]>=7.0",
-  "mock>=5.0",
-  "boto3>=1.20",
-]
-dev = ["ruff>=0.1", "mypy>=1.0"]
+[project.entry-points."exordos_metapaas_paas"]
+mail = "exordos_paas_mail.definition:MailDefinition"
+
+[project.entry-points."gcl_sdk_universal_agent"]
+MailCapabilityDriver = "exordos_paas_mail.driver:MailCapabilityDriver"
+
+[build-system]
+requires = ["setuptools>=75.3.3", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
 
 [project.urls]
-homepage = "https://exordos.com"
+homepage = "https://github.com/infraguys/metapaas_mail/"
 
-[project.entry-points."exordos_metapaas.plugins"]
-mail = "exordos_paas_mail"
+[project.optional-dependencies]
+dev = [
+    "tox>=4.0.0",
+    "tox-uv",
+    "pytest>=7.0.0",
+]
+test = [
+    "coverage>=4.0",
+    "mock>=3.0.5,<4.0.0",
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-timer>=1.0.0,<2.0.0",
+    "exordos>=2.0.0,<3.0.0",
+]
+ruff = [
+    "ruff",
+]
+mypy = [
+    "mypy",
+]
+
+[tool.uv]
+package = true
 
 [tool.ruff]
 line-length = 88
+indent-width = 4
 target-version = "py310"
-select = ["E", "F", "I", "N", "W"]
+exclude = [".venv", "build", "dist", "output", "__pycache__"]
 
-[tool.ruff.isort]
-known-first-party = ["exordos_paas_mail"]
-
-[tool.mypy]
-python_version = "3.10"
-disallow_untyped_defs = true
-ignore_missing_imports = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-files = "exordos_paas_mail"
+[lint]
+select = ["E4", "E7", "E9", "F"]
+fixable = ["ALL"]
 
 [tool.coverage.run]
 branch = true
 source = ["exordos_paas_mail"]
-omit = [
-  "*/tests/*",
-  "*/__pycache__/*",
-  "*/site-packages/*",
-]
+command_line = "-m pytest -s exordos_paas_mail/tests/unit"
+omit = ["exordos_paas_mail/tests/*", ".venv"]
 
 [tool.coverage.report]
-precision = 2
-show_missing = true
-skip_covered = false
-exclude_lines = [
-  "pragma: no cover",
-  "def __repr__",
-  "raise AssertionError",
-  "raise NotImplementedError",
-  "if __name__ == .__main__.:",
+exclude_also = [
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
 ]
+ignore_errors = true
 
 [tool.coverage.html]
-directory = "htmlcov"
+directory = "cover"
 
 [tool.coverage.xml]
-output = "coverage.xml"
+output = "cover/coverage.xml"
+
+[tool.mypy]
+files = ["exordos_paas_mail"]
+python_version = "3.12"
+disallow_untyped_defs = true
+show_error_codes = true
+no_implicit_optional = true
+warn_return_any = false
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["exordos_paas_mail*"]
+
+[tool.setuptools.package-data]
+exordos_paas_mail = ["migrations/*.py"]

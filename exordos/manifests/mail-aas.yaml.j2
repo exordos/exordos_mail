@@ -1,0 +1,100 @@
+name: "mail-aas"
+description: "Install the mail PaaS into the metapaas control plane: registers the Python package, IAM permissions and dataplane version. The metapaas element itself stays PaaS-agnostic."
+schema_version: 1
+version: "{{ version }}"
+api_version: "v1"
+
+requirements:
+  core:
+    from_version: "0.0.0"
+  metapaas:
+    from_version: "0.0.0"
+
+resources:
+
+  # Register the mail PaaS type in metapaas. The PluginReconciler watches this
+  # resource and pip-installs the package at runtime on metapaas-cp.
+  $metapaas.types:
+    mail:
+      name: "mail"
+      element_name: "mail-aas"
+      package: "exordos_paas_mail"
+      index_url: "{{ index_url | default('') }}"
+      project_id: "4d657461-0000-0000-0000-000000000002"
+
+  # Mail IAM permissions bound to the metapaas project owner role.
+  # Names must match __policy_service_name__ + __policy_name__ in controllers.py:
+  #   exordos_mail.mail_instance.*  →  MailInstanceController
+  #   exordos_mail.account.*        →  MailAccountController
+  #   exordos_mail.mail_version.read → MailVersionController
+  $core.iam.permissions:
+    mail_instance_create:
+      name: "exordos_mail.mail_instance.create"
+    mail_instance_read:
+      name: "exordos_mail.mail_instance.read"
+    mail_instance_update:
+      name: "exordos_mail.mail_instance.update"
+    mail_instance_delete:
+      name: "exordos_mail.mail_instance.delete"
+    mail_account_create:
+      name: "exordos_mail.account.create"
+    mail_account_read:
+      name: "exordos_mail.account.read"
+    mail_account_update:
+      name: "exordos_mail.account.update"
+    mail_account_delete:
+      name: "exordos_mail.account.delete"
+    mail_version_read:
+      name: "exordos_mail.mail_version.read"
+
+  # Bind each permission to the owner role (726f6c65-...-0002) in the metapaas
+  # project (4d657461-...-0002). Any user granted owner in that project can use
+  # the mail API. Multitenancy is enforced at the CP layer via ModelWithProject.
+  $core.iam.permissionbinding:
+    mail_instance_create_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_instance_create:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_instance_read_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_instance_read:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_instance_update_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_instance_update:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_instance_delete_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_instance_delete:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_account_create_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_account_create:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_account_read_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_account_read:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_account_update_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_account_update:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_account_delete_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_account_delete:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mail_version_read_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mail_version_read:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+
+  # Mail dataplane version catalog entry.
+  $mail.types.mail.versions:
+    postfix_1:
+      name: "postfix_1"
+      description: "4d657461-0000-0000-0000-000000000002"
+      image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/{{ name }}/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
+
+exports:
+  postfix_1:
+    link: "$mail.types.mail.versions.$postfix_1"

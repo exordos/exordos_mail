@@ -11,3 +11,21 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+
+PERMS_OWNER = [
+    "exordos_mail.mail_instance.create",
+    "exordos_mail.mail_instance.read",
+    "exordos_mail.mail_instance.update",
+    "exordos_mail.mail_instance.delete",
+    "exordos_mail.account.create",
+    "exordos_mail.account.read",
+    "exordos_mail.account.update",
+    "exordos_mail.account.delete",
+    "exordos_mail.mail_version.read",
+]
+
+ALL_PERMS = set(PERMS_OWNER)
+
+ROLES = {
+    "owner": PERMS_OWNER,
+}
