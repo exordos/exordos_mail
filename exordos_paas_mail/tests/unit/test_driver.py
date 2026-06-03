@@ -14,16 +14,23 @@
 
 from unittest import mock
 
-from exordos_paas_mail.driver import MailInstance
+import exordos_paas_mail.driver as drv_module
+
+
+class _Stub:
+    """Plain object that exposes the driver's file-building methods."""
+
+    def __init__(self, domain, accounts):
+        self.domain = domain
+        self.accounts = accounts
+
+    _build_users_file = drv_module.MailInstance._build_users_file
+    _build_vmailbox_file = drv_module.MailInstance._build_vmailbox_file
 
 
 class TestMailInstanceUsersFile:
     def _make_instance(self, domain, accounts):
-        inst = MailInstance.__new__(MailInstance)
-        inst.name = "test"
-        inst.domain = domain
-        inst.accounts = accounts
-        return inst
+        return _Stub(domain, accounts)
 
     def test_empty_accounts(self) -> None:
         inst = self._make_instance("example.com", {})
