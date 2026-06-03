@@ -15,7 +15,6 @@
 import os
 
 from exordos_metapaas.registry import PaaSDefinition
-from exordos_paas_mail import permissions
 from exordos_paas_mail import routes
 
 
@@ -35,16 +34,21 @@ class MailDefinition(PaaSDefinition):
     def get_migrations_path(self):
         return os.path.join(os.path.dirname(__file__), "migrations")
 
-    def get_builders(self):
+    def get_builders(self, core_username, core_password, core_api_base_url, project_id):
+        from exordos_paas_mail.infra_builder import CoreInfraBuilder
+        from exordos_paas_mail.infra_models import MailInstance as InfraMailInstance
+        from exordos_paas_mail.paas_builder import MailInstanceBuilder
+        from exordos_paas_mail.paas_models import MailInstance as PaaSMailInstance
+
         return [
-            {
-                "service": "exordos_paas_mail.infra_builder:CoreInfraBuilder",
-                "core_creds": True,
-            },
-            {
-                "service": "exordos_paas_mail.paas_builder:MailInstanceBuilder",
-                "core_creds": False,
-            },
+            CoreInfraBuilder(
+                core_username=core_username,
+                core_password=core_password,
+                core_api_base_url=core_api_base_url,
+                project_id=project_id,
+                instance_model=InfraMailInstance,
+            ),
+            MailInstanceBuilder(instance_model=PaaSMailInstance),
         ]
 
     def get_agent_models(self):
@@ -60,6 +64,3 @@ class MailDefinition(PaaSDefinition):
             "instances": "project_id",
             "instances.accounts": "project_id",
         }
-
-    def get_iam_permissions(self):
-        return list(permissions.PERMS_OWNER)

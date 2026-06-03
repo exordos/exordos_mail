@@ -16,7 +16,6 @@ import logging
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_looper.services.oslo import base as oslo_base
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.paas.services import builder
 
@@ -42,7 +41,7 @@ class PaaSBuilder(builder.PaaSBuilder):
         return scheduled
 
 
-class MailInstanceBuilder(PaaSBuilder, oslo_base.OsloConfigurableService):
+class MailInstanceBuilder(PaaSBuilder):
     def __init__(
         self,
         instance_model: tp.Type[models.MailInstance] = models.MailInstance,

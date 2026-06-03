@@ -16,14 +16,11 @@ import logging
 import typing as tp
 import uuid as sys_uuid
 
-from gcl_looper.services.oslo import base as oslo_base
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.agents.universal.drivers import core as core_drivers
-from gcl_sdk.common.oslo import types as sdk_cfg_types
 from gcl_sdk.infra import constants as sdk_c
 from gcl_sdk.infra.dm import models as sdk_models
 from gcl_sdk.infra.services import builder
-from oslo_config import cfg
 from restalchemy.dm import filters as dm_filters
 
 from exordos_paas_mail import infra_models as models
@@ -41,12 +38,12 @@ MAIL_DOMAIN={domain}
 """
 
 
-class CoreInfraBuilder(builder.CoreInfraBuilder, oslo_base.OsloConfigurableService):
+class CoreInfraBuilder(builder.CoreInfraBuilder):
     def __init__(
         self,
-        core_username,
-        core_password,
-        core_api_base_url,
+        core_username: str,
+        core_password: str,
+        core_api_base_url: str,
         project_id: sys_uuid.UUID,
         instance_model: tp.Type[models.MailInstance] = models.MailInstance,
     ):
@@ -62,30 +59,6 @@ class CoreInfraBuilder(builder.CoreInfraBuilder, oslo_base.OsloConfigurableServi
             config="/v1/config/configs/",
         )
         self._cclient = self.core_driver._client._client
-
-    @classmethod
-    def svc_get_config_opts(cls) -> tp.Collection[cfg.Opt]:
-        return [
-            cfg.StrOpt(
-                "core_username",
-                default="exordos_mail",
-                help=("User to work with Core."),
-            ),
-            cfg.StrOpt(
-                "core_password",
-                default="exordos_mail",
-                help=("User password to work with Core."),
-            ),
-            cfg.StrOpt(
-                "core_api_base_url",
-                default="http://core.local.genesis-core.tech:11010",
-                help=("Core's user api endpoint."),
-            ),
-            sdk_cfg_types.UuidOpt(
-                "project_id",
-                help=("Project id to work with Core."),
-            ),
-        ]
 
     def create_infra(
         self, instance: models.MailInstance
