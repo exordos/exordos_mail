@@ -88,8 +88,9 @@ resources:
       permission: $core.iam.permissions.$mail_version_read:uuid
       project_id: "4d657461-0000-0000-0000-000000000002"
 
-  # Mail dataplane version catalog entry.
-  $mail.types.mail.versions:
+  # Mail dataplane version catalog entry. `description` carries the metapaas
+  # project id for the core-agent version filter.
+  $mail-aas.types.mail.versions:
     postfix_1:
       name: "postfix_1"
       description: "4d657461-0000-0000-0000-000000000002"
@@ -97,4 +98,4 @@ resources:
 
 exports:
   postfix_1:
-    link: "$mail.types.mail.versions.$postfix_1"
+    link: "$mail-aas.types.mail.versions.$postfix_1"
