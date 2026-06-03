@@ -47,7 +47,6 @@ def _write_file_atomic(path: str, content: str) -> bool:
 
 def _reload_exim4() -> None:
     try:
-        subprocess.run(["exim4", "-DEXIM_OUTPUT_FILTER", "-qff"], check=False, timeout=5)
         subprocess.run(["systemctl", "reload", "exim4"], check=True, timeout=10)
         LOG.info("exim4 reloaded")
     except Exception:
@@ -115,7 +114,7 @@ class MailInstance(meta.MetaDataPlaneModel):
                     if not line or line.startswith("#"):
                         continue
                     parts = line.split(":")
-                    if len(parts) >= 1:
+                    if len(parts) >= 2:
                         result[parts[0]] = line
         except FileNotFoundError:
             pass

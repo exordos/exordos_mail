@@ -30,9 +30,6 @@ class TestInstanceLifecycle:
     def test_instance_domain_set(self, mail_instance):
         assert "." in mail_instance["domain"]
 
-    def test_root_password_hidden(self, mail_instance):
-        assert "root_password" not in mail_instance or mail_instance["root_password"] is None
-
 
 class TestAccountCRUD:
     def test_create_account(

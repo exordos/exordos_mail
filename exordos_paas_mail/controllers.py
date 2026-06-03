@@ -61,7 +61,6 @@ class MailInstanceController(
                     constants.ALL: field_p.Permissions.RO,
                     constants.CREATE: field_p.Permissions.RW,
                 },
-                "root_password": {constants.ALL: field_p.Permissions.HIDDEN},
             },
         ),
     )

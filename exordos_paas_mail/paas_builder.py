@@ -14,7 +14,6 @@
 
 import logging
 import typing as tp
-import uuid
 import uuid as sys_uuid
 
 from gcl_looper.services.oslo import base as oslo_base
@@ -77,7 +76,7 @@ class MailInstanceBuilder(PaaSBuilder, oslo_base.OsloConfigurableService):
         nodes_by_idx = list(nodeset.nodes.keys())
 
         # Mail is always single-node
-        node_uuid = uuid.UUID(nodes_by_idx[0])
+        node_uuid = sys_uuid.UUID(nodes_by_idx[0])
         return [
             models.MailInstanceNode(
                 uuid=PaaSBuilder.agent_uuid_by_node(node_uuid),

@@ -14,7 +14,6 @@
 
 import logging
 import typing as tp
-import uuid
 import uuid as sys_uuid
 
 from gcl_looper.services.oslo import base as oslo_base
@@ -39,7 +38,6 @@ MAIL_CONF_TEMPLATE = """\
 # Mail node environment configuration
 # Managed by Exordos mail control plane — do not edit manually
 MAIL_DOMAIN={domain}
-MAIL_ROOT_PASSWORD={root_password}
 """
 
 
@@ -124,17 +122,16 @@ class CoreInfraBuilder(builder.CoreInfraBuilder, oslo_base.OsloConfigurableServi
                 nkey.private_key = v
                 nkey.update()
             else:
-                nkey = ua_models.NodeEncryptionKey(uuid=uuid.UUID(u), private_key=v)
+                nkey = ua_models.NodeEncryptionKey(uuid=sys_uuid.UUID(u), private_key=v)
                 nkey.insert()
 
         # Mail is single-node; generate config for the one node
         for node_uuid_str, node in nodeset.nodes.items():
             content = MAIL_CONF_TEMPLATE.format(
                 domain=instance.domain,
-                root_password=instance.root_password,
             )
             config = instance._create_config(
-                uuid.UUID(node_uuid_str), self._project_id, content
+                sys_uuid.UUID(node_uuid_str), self._project_id, content
             )
             new_objects.append(config)
 
@@ -162,7 +159,7 @@ class CoreInfraBuilder(builder.CoreInfraBuilder, oslo_base.OsloConfigurableServi
                 target.replicas = 1
                 tgt_nodeset = target
             else:
-                LOG.exception(
+                LOG.warning(
                     "%s kind is not supported here, ignoring...",
                     target.get_resource_kind(),
                 )

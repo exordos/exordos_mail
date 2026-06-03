@@ -31,12 +31,6 @@ class TestMailInstance:
         assert "ACTIVE" in values
         assert "ERROR" in values
 
-    def test_root_password_alphabet_nonempty(self) -> None:
-        assert len(models.ROOT_PASSWORD_ALPHABET) > 0
-
-    def test_root_password_length(self) -> None:
-        assert models.ROOT_PASSWORD_LENGTH == 32
-
 
 class TestMailAccount:
     def test_tablename(self) -> None:

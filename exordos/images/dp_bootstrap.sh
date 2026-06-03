@@ -20,7 +20,7 @@ set -o pipefail
 
 source /usr/local/lib/exordos/lib_bootstrap.sh
 
-# Mail data (mailboxes) lives on the second persistent disk
+# Logs live on the persistent disk (survives reboots)
 PERSISTENT_DISK=$(find_persistent_disk)
 prepare_persistent_disk "$PERSISTENT_DISK" "$PERSISTENT_MOUNT" "xfs"
 

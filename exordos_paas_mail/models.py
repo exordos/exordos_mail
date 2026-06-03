@@ -13,8 +13,6 @@
 #    under the License.
 
 import enum
-import secrets
-import string
 
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
@@ -25,10 +23,6 @@ from restalchemy.storage.sql import orm
 from gcl_sdk.agents.universal.dm import models as ua_models
 
 from exordos_paas_mail import utils as u
-
-
-ROOT_PASSWORD_LENGTH = 32
-ROOT_PASSWORD_ALPHABET = string.ascii_letters + string.digits + "!@#$%^&*"
 
 
 class MailStatus(str, enum.Enum):
@@ -74,12 +68,6 @@ class MailInstance(
     cpu = properties.property(types.Integer(min_value=1, max_value=128))
     ram = properties.property(types.Integer(min_value=512, max_value=1024**3))
     disk_size = properties.property(types.Integer(min_value=8, max_value=1024**3))
-    root_password = properties.property(
-        types.String(min_length=1, max_length=256),
-        default=lambda: "".join(
-            secrets.choice(ROOT_PASSWORD_ALPHABET) for _ in range(ROOT_PASSWORD_LENGTH)
-        ),
-    )
     version = relationships.relationship(MailVersion, required=True, read_only=True)
 
     def get_accounts(self, session=None):

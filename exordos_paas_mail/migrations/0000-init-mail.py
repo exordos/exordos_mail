@@ -50,7 +50,6 @@ CREATE TABLE mail_instances (
     cpu INT NOT NULL CHECK (cpu BETWEEN 1 AND 128),
     ram INT NOT NULL CHECK (ram BETWEEN 512 AND 1073741824),
     disk_size INT NOT NULL CHECK (disk_size BETWEEN 8 AND 1073741824),
-    root_password VARCHAR(256) NOT NULL,
     version UUID NOT NULL,
     "ipsv4" VARCHAR(15) ARRAY,
     created_at TIMESTAMP NOT NULL,
