@@ -60,11 +60,11 @@ class TestAccountCRUD:
         accounts = mail_api_client.filter(collection)
         assert isinstance(accounts, list)
 
-    def test_update_account_quota(
+    def test_update_account_active(
         self, mail_api_client, mail_instance_uuid, mail_project_id
     ):
-        username = f"quota-{uuid.uuid4().hex[:8]}"
-        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        username = f"update-{uuid.uuid4().hex[:8]}"
+        password_hash = "$6$salt$hash"
         account = mail_conftest.create_account_via_api(
             mail_api_client,
             mail_instance_uuid,
@@ -74,10 +74,10 @@ class TestAccountCRUD:
         )
 
         collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
-        mail_api_client.update(collection, uuid=account["uuid"], quota_mb=512)
+        mail_api_client.update(collection, uuid=account["uuid"], active=False)
 
         updated = mail_api_client.get(collection, uuid=account["uuid"])
-        assert updated["quota_mb"] == 512
+        assert updated["active"] is False
 
         # Cleanup
         mail_api_client.delete(collection, uuid=account["uuid"])

@@ -139,7 +139,6 @@ class MailInstance(meta.MetaDataPlaneModel):
                 self.accounts[local] = {
                     "password_hash": "",
                     "active": True,
-                    "quota_mb": 0,
                 }
 
     def delete_from_dp(self) -> None:

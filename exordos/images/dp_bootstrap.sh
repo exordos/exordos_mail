@@ -26,7 +26,6 @@ prepare_persistent_disk "$PERSISTENT_DISK" "$PERSISTENT_MOUNT" "xfs"
 
 if [[ -n "$PERSISTENT_DISK" ]]; then
     migrate_to_persistent_restart "/var/log" "${PERSISTENT_MOUNT}/var/log" "systemd-journald rsyslog"
-    migrate_to_persistent "/var/mail" "${PERSISTENT_MOUNT}/var/mail"
     persist_migrate_complete
 fi
 
