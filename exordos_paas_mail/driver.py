@@ -55,22 +55,14 @@ def _reload_exim4() -> None:
         subprocess.run(["systemctl", "restart", "exim4"], timeout=30)
 
 
-def _reload_dovecot() -> None:
-    try:
-        subprocess.run(["doveadm", "reload"], check=True, timeout=10)
-        LOG.info("Dovecot reloaded")
-    except Exception:
-        LOG.warning("Failed to reload dovecot; attempting restart", exc_info=True)
-        subprocess.run(["systemctl", "restart", "dovecot"], timeout=30)
-
 
 class MailInstance(meta.MetaDataPlaneModel):
-    """Data plane model for a single mail (exim4 + Dovecot) node.
+    """Data plane model for a single exim4 SMTP node (genesis_sender pattern).
 
     Reconciles target account state (from control plane) with the local
-    mail server by managing two files in sync:
-      - /etc/exim4/passwd  — exim4 SMTP auth (lsearch format, SHA512-CRYPT)
-      - /etc/exordos_metapaas/mail.users — Dovecot passwd-file (IMAP/POP3)
+    exim4 passwd file for SMTP AUTH:
+      - /etc/exim4/passwd — lsearch format: username@domain:crypt_hash
+    Hashes are stored as raw crypt format ($6$...), Dovecot prefixes stripped.
     """
 
     name = properties.property(
@@ -94,37 +86,24 @@ class MailInstance(meta.MetaDataPlaneModel):
 
     # ------------------------------------------------------------------
     # exim4 passwd file  (SMTP AUTH — lsearch lookup by username@domain)
-    # Format: username@domain:password_hash
-    # The auth config uses crypteq which understands {SHA512-CRYPT}$6$...
+    # Format: username@domain:crypt_hash
+    # exim4 crypteq understands $6$/5$/1$ directly — not {SHA512-CRYPT} prefix.
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _strip_dovecot_prefix(password_hash: str) -> str:
+        """Strip Dovecot scheme prefix (e.g. {SHA512-CRYPT}) that exim4 doesn't understand."""
+        if password_hash.startswith("{") and "}" in password_hash:
+            return password_hash[password_hash.index("}") + 1:]
+        return password_hash
 
     def _build_exim4_passwd(self) -> str:
         lines = []
         for username, info in self.accounts.items():
             if not info.get("active", True):
                 continue
-            password_hash = info.get("password_hash", "")
+            password_hash = self._strip_dovecot_prefix(info.get("password_hash", ""))
             lines.append(f"{username}@{self.domain}:{password_hash}")
-        return "\n".join(lines) + "\n" if lines else ""
-
-    # ------------------------------------------------------------------
-    # Dovecot passwd-file  (IMAP/POP3 auth + userdb)
-    # Format: username@domain:hash:uid:gid:gecos:home:shell::extra
-    # Quota goes in the extra_fields section.
-    # ------------------------------------------------------------------
-
-    def _build_users_file(self) -> str:
-        lines = []
-        for username, info in self.accounts.items():
-            if not info.get("active", True):
-                continue
-            password_hash = info.get("password_hash", "")
-            quota_mb = info.get("quota_mb", 0)
-            home = f"/var/mail/{self.domain}/{username}"
-            extra = f"userdb_quota_rule=*:storage={quota_mb}M" if quota_mb > 0 else ""
-            lines.append(
-                f"{username}@{self.domain}:{password_hash}:1001:1001::{home}::{extra}"
-            )
         return "\n".join(lines) + "\n" if lines else ""
 
     def _read_exim4_passwd(self) -> dict:
@@ -148,15 +127,8 @@ class MailInstance(meta.MetaDataPlaneModel):
         exim4_changed = _write_file_atomic(
             constants.EXIM4_PASSWD_FILE, self._build_exim4_passwd()
         )
-        dovecot_changed = _write_file_atomic(
-            constants.MAIL_USERS_FILE, self._build_users_file()
-        )
-
         if exim4_changed:
             _reload_exim4()
-
-        if dovecot_changed:
-            _reload_dovecot()
 
     def restore_from_dp(self) -> None:
         actual = self._read_exim4_passwd()

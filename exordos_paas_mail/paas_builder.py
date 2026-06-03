@@ -56,7 +56,6 @@ class MailInstanceBuilder(PaaSBuilder, oslo_base.OsloConfigurableService):
             result[account.username] = {
                 "password_hash": account.password_hash,
                 "active": account.active,
-                "quota_mb": account.quota_mb,
             }
         return result
 

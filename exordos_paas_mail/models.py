@@ -119,9 +119,6 @@ class MailAccount(
         types.String(min_length=1, max_length=1024), required=True
     )
     active = properties.property(types.Boolean(), default=True)
-    quota_mb = properties.property(
-        types.Integer(min_value=0, max_value=1024 * 1024), default=0
-    )
 
     def _touch_parent(self, session=None):
         self.instance.update(force=True)

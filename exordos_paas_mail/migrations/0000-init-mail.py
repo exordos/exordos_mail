@@ -70,7 +70,6 @@ CREATE TABLE mail_accounts (
     username VARCHAR(255) NOT NULL,
     password_hash VARCHAR(1024) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE,
-    quota_mb INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     FOREIGN KEY (instance) REFERENCES mail_instances(uuid)

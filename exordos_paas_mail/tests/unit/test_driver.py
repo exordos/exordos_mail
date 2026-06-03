@@ -23,7 +23,21 @@ class _Stub:
         self.accounts = accounts
 
     _build_exim4_passwd = drv_module.MailInstance._build_exim4_passwd
-    _build_users_file = drv_module.MailInstance._build_users_file
+    _strip_dovecot_prefix = staticmethod(drv_module.MailInstance._strip_dovecot_prefix)
+
+
+class TestStripDovecotPrefix:
+    def test_strips_sha512_crypt(self) -> None:
+        assert _Stub._strip_dovecot_prefix("{SHA512-CRYPT}$6$abc") == "$6$abc"
+
+    def test_strips_md5(self) -> None:
+        assert _Stub._strip_dovecot_prefix("{MD5}$1$abc") == "$1$abc"
+
+    def test_no_prefix_unchanged(self) -> None:
+        assert _Stub._strip_dovecot_prefix("$6$abc") == "$6$abc"
+
+    def test_empty_unchanged(self) -> None:
+        assert _Stub._strip_dovecot_prefix("") == ""
 
 
 class TestExim4Passwd:
@@ -34,61 +48,37 @@ class TestExim4Passwd:
         inst = self._make("example.com", {})
         assert inst._build_exim4_passwd() == ""
 
-    def test_active_account(self) -> None:
+    def test_active_account_strips_prefix(self) -> None:
         inst = self._make(
             "example.com",
-            {"alice": {"password_hash": "{SHA512-CRYPT}$6$abc", "active": True, "quota_mb": 0}},
+            {"alice": {"password_hash": "{SHA512-CRYPT}$6$abc", "active": True}},
         )
         passwd = inst._build_exim4_passwd()
-        assert "alice@example.com:{SHA512-CRYPT}$6$abc" in passwd
+        assert "alice@example.com:$6$abc" in passwd
+        assert "{SHA512-CRYPT}" not in passwd
+
+    def test_raw_hash_unchanged(self) -> None:
+        inst = self._make(
+            "example.com",
+            {"bob": {"password_hash": "$6$salt$hash", "active": True}},
+        )
+        assert "bob@example.com:$6$salt$hash" in inst._build_exim4_passwd()
 
     def test_inactive_excluded(self) -> None:
         inst = self._make(
             "example.com",
-            {"bob": {"password_hash": "hash", "active": False, "quota_mb": 0}},
+            {"carol": {"password_hash": "$6$x", "active": False}},
         )
-        assert "bob@example.com" not in inst._build_exim4_passwd()
+        assert "carol@example.com" not in inst._build_exim4_passwd()
 
     def test_multiple_accounts(self) -> None:
         inst = self._make(
             "example.com",
             {
-                "alice": {"password_hash": "ha", "active": True, "quota_mb": 0},
-                "bob": {"password_hash": "hb", "active": True, "quota_mb": 0},
+                "alice": {"password_hash": "{SHA512-CRYPT}$6$ha", "active": True},
+                "bob": {"password_hash": "$6$hb", "active": True},
             },
         )
         passwd = inst._build_exim4_passwd()
-        assert "alice@example.com:ha" in passwd
-        assert "bob@example.com:hb" in passwd
-
-
-class TestDovecotUsersFile:
-    def _make(self, domain, accounts):
-        return _Stub(domain, accounts)
-
-    def test_empty(self) -> None:
-        inst = self._make("example.com", {})
-        assert inst._build_users_file() == ""
-
-    def test_active_with_quota(self) -> None:
-        inst = self._make(
-            "example.com",
-            {"carol": {"password_hash": "{SHA512-CRYPT}$6$qrs", "active": True, "quota_mb": 512}},
-        )
-        line = inst._build_users_file()
-        assert "carol@example.com" in line
-        assert "storage=512M" in line
-
-    def test_inactive_excluded(self) -> None:
-        inst = self._make(
-            "example.com",
-            {"dave": {"password_hash": "h", "active": False, "quota_mb": 0}},
-        )
-        assert "dave@example.com" not in inst._build_users_file()
-
-    def test_home_path(self) -> None:
-        inst = self._make(
-            "test.local",
-            {"eve": {"password_hash": "h", "active": True, "quota_mb": 0}},
-        )
-        assert "/var/mail/test.local/eve" in inst._build_users_file()
+        assert "alice@example.com:$6$ha" in passwd
+        assert "bob@example.com:$6$hb" in passwd
