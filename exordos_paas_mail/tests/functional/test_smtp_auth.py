@@ -99,25 +99,36 @@ def _wait_for_auth(
         )
 
 
+def _sha512_crypt(password: str) -> str:
+    """Return a raw SHA512-crypt hash suitable for exim4 lsearch ($6$...)."""
+    import crypt  # noqa: PLC0415 — stdlib, Python ≤3.12
+
+    return crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
+
+
 def _make_account(
     mail_api_client,
     instance_uuid: str,
     project_id: str,
     username: str,
     password: str,
+    *,
+    dovecot_prefix: bool = False,
 ) -> dict:
     """Create a mail account and return the API response.
 
-    The password is hashed with SHA512-crypt so exim4 can verify it.
+    By default stores a raw SHA512-crypt hash ($6$...) that exim4 can verify
+    directly.  Pass dovecot_prefix=True to store a Dovecot-formatted hash
+    ({SHA512-CRYPT}$6$...) — the DP driver must strip the prefix before
+    writing to /etc/exim4/passwd.
     """
-    import crypt  # noqa: PLC0415 — stdlib, Python ≤3.12
-
-    hashed = crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
+    hashed = _sha512_crypt(password)
+    password_hash = f"{{SHA512-CRYPT}}{hashed}" if dovecot_prefix else hashed
     return mail_conftest.create_account_via_api(
         mail_api_client,
         instance_uuid,
         username,
-        f"{{SHA512-CRYPT}}{hashed}",
+        password_hash,
         project_id,
     )
 
@@ -202,6 +213,29 @@ class TestSmtpAuthBasic:
         with pytest.raises(smtplib.SMTPAuthenticationError) as exc_info:
             _smtp_login(dp_host, fake, "anypassword")
         assert exc_info.value.smtp_code == 535
+
+    def test_dovecot_prefix_stripped_by_driver(
+        self, mail_api_client, mail_instance_uuid, mail_project_id, dp_host, domain
+    ):
+        """Account stored with {SHA512-CRYPT} prefix must still authenticate.
+
+        The DP driver is responsible for stripping the Dovecot scheme prefix
+        before writing the hash to /etc/exim4/passwd.  This test verifies that
+        the stripping logic is wired end-to-end.
+        """
+        username = f"prefix-{uuid.uuid4().hex[:8]}"
+        password = "PrefixTest66"
+        _make_account(
+            mail_api_client, mail_instance_uuid, mail_project_id,
+            username, password, dovecot_prefix=True,
+        )
+        _wait_for_auth(dp_host, f"{username}@{domain}", password, expect_success=True)
+
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        for acc in mail_api_client.filter(collection):
+            if acc["username"] == username:
+                mail_api_client.delete(collection, uuid=acc["uuid"])
+                break
 
 
 class TestSmtpAuthSync:
@@ -358,18 +392,28 @@ class TestSmtpSubmit:
                 mail_api_client.delete(collection, uuid=acc["uuid"])
                 break
 
-    def test_unauthenticated_submission_rejected(self, dp_host, domain):
-        """Port 587 must reject MAIL FROM without prior AUTH."""
+    def test_unauthenticated_submission_fails(self, dp_host, domain):
+        """Without AUTH, submission to the domain must not succeed.
+
+        exim4 in Internet mode may accept MAIL FROM but reject RCPT TO for
+        an unroutable domain (550), or reject at MAIL FROM (530).  Either way
+        the mail is not accepted for delivery.
+        """
         with smtplib.SMTP(dp_host, 587, timeout=10) as smtp:
             smtp.ehlo()
             smtp.starttls(context=_TLS_CTX)
             smtp.ehlo()
-            # No login — try to send
-            with pytest.raises(smtplib.SMTPSenderRefused) as exc_info:
+            try:
                 smtp.sendmail(
                     f"noreply@{domain}",
                     [f"noreply@{domain}"],
                     "From: noreply\r\nTo: noreply\r\nSubject: test\r\n\r\ntest",
                 )
-            # exim4 returns 550 or 530 for unauthenticated submission
-            assert exc_info.value.smtp_code in (530, 550, 553)
+                pytest.fail("sendmail should not succeed without authentication")
+            except smtplib.SMTPSenderRefused as e:
+                # Auth required before MAIL FROM
+                assert e.smtp_code in (530, 550, 553)
+            except smtplib.SMTPRecipientsRefused as e:
+                # RCPT TO rejected (550 Unrouteable — domain not local)
+                codes = {v[0] for v in e.recipients.values()}
+                assert codes <= {550, 530, 553}

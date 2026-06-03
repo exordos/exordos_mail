@@ -20,7 +20,7 @@ from exordos_paas_mail import routes
 
 class MailDefinition(PaaSDefinition):
     """Mail-aaS as a metapaas plugin: control-plane API, dataplane
-    (Postfix + Dovecot) and all the runtime wiring (builders, core-agent
+    (exim4 SMTP relay) and all the runtime wiring (builders, core-agent
     models, IAM perms) declared through the registry contract so the
     metapaas runtime hosts it generically.
     """
