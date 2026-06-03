@@ -45,6 +45,16 @@ def _write_file_atomic(path: str, content: str) -> bool:
     return True
 
 
+def _reload_exim4() -> None:
+    try:
+        subprocess.run(["exim4", "-DEXIM_OUTPUT_FILTER", "-qff"], check=False, timeout=5)
+        subprocess.run(["systemctl", "reload", "exim4"], check=True, timeout=10)
+        LOG.info("exim4 reloaded")
+    except Exception:
+        LOG.warning("Failed to reload exim4; attempting restart", exc_info=True)
+        subprocess.run(["systemctl", "restart", "exim4"], timeout=30)
+
+
 def _reload_dovecot() -> None:
     try:
         subprocess.run(["doveadm", "reload"], check=True, timeout=10)
@@ -54,29 +64,13 @@ def _reload_dovecot() -> None:
         subprocess.run(["systemctl", "restart", "dovecot"], timeout=30)
 
 
-def _reload_postfix() -> None:
-    try:
-        subprocess.run(["postfix", "reload"], check=True, timeout=10)
-        LOG.info("Postfix reloaded")
-    except Exception:
-        LOG.warning("Failed to reload postfix; attempting restart", exc_info=True)
-        subprocess.run(["systemctl", "restart", "postfix"], timeout=30)
-
-
-def _postmap(path: str) -> None:
-    try:
-        subprocess.run(["postmap", path], check=True, timeout=30)
-    except Exception:
-        LOG.error("postmap %s failed", path, exc_info=True)
-        raise
-
-
 class MailInstance(meta.MetaDataPlaneModel):
-    """Data plane model for a single mail (Postfix + Dovecot) node.
+    """Data plane model for a single mail (exim4 + Dovecot) node.
 
-    Reconciles target state (from control plane) with actual state on the
-    local mail server by managing the Dovecot passwd-file and Postfix
-    virtual mailbox map.
+    Reconciles target account state (from control plane) with the local
+    mail server by managing two files in sync:
+      - /etc/exim4/passwd  — exim4 SMTP auth (lsearch format, SHA512-CRYPT)
+      - /etc/exordos_metapaas/mail.users — Dovecot passwd-file (IMAP/POP3)
     """
 
     name = properties.property(
@@ -98,50 +92,52 @@ class MailInstance(meta.MetaDataPlaneModel):
     def get_meta_model_fields(self) -> set[str] | None:
         return self._meta_fields
 
-    # -- Dovecot passwd-file format --
-    # username:password_hash:uid:gid:gecos:home:shell:extra_fields
-    # Quota rule goes in the extra_fields section.
+    # ------------------------------------------------------------------
+    # exim4 passwd file  (SMTP AUTH — lsearch lookup by username@domain)
+    # Format: username@domain:password_hash
+    # The auth config uses crypteq which understands {SHA512-CRYPT}$6$...
+    # ------------------------------------------------------------------
+
+    def _build_exim4_passwd(self) -> str:
+        lines = []
+        for username, info in self.accounts.items():
+            if not info.get("active", True):
+                continue
+            password_hash = info.get("password_hash", "")
+            lines.append(f"{username}@{self.domain}:{password_hash}")
+        return "\n".join(lines) + "\n" if lines else ""
+
+    # ------------------------------------------------------------------
+    # Dovecot passwd-file  (IMAP/POP3 auth + userdb)
+    # Format: username@domain:hash:uid:gid:gecos:home:shell::extra
+    # Quota goes in the extra_fields section.
+    # ------------------------------------------------------------------
 
     def _build_users_file(self) -> str:
         lines = []
         for username, info in self.accounts.items():
-            password_hash = info.get("password_hash", "")
-            active = info.get("active", True)
-            quota_mb = info.get("quota_mb", 0)
-
-            if not active:
+            if not info.get("active", True):
                 continue
-
+            password_hash = info.get("password_hash", "")
+            quota_mb = info.get("quota_mb", 0)
             home = f"/var/mail/{self.domain}/{username}"
-            extra = ""
-            if quota_mb > 0:
-                extra = f"userdb_quota_rule=*:storage={quota_mb}M"
-
+            extra = f"userdb_quota_rule=*:storage={quota_mb}M" if quota_mb > 0 else ""
             lines.append(
                 f"{username}@{self.domain}:{password_hash}:1001:1001::{home}::{extra}"
             )
         return "\n".join(lines) + "\n" if lines else ""
 
-    def _build_vmailbox_file(self) -> str:
-        lines = []
-        for username, info in self.accounts.items():
-            if not info.get("active", True):
-                continue
-            lines.append(f"{username}@{self.domain}  {self.domain}/{username}/")
-        return "\n".join(lines) + "\n" if lines else ""
-
-    def _read_users_file(self) -> dict:
+    def _read_exim4_passwd(self) -> dict:
         result = {}
         try:
-            with open(constants.MAIL_USERS_FILE) as f:
+            with open(constants.EXIM4_PASSWD_FILE) as f:
                 for line in f:
                     line = line.strip()
                     if not line or line.startswith("#"):
                         continue
                     parts = line.split(":")
-                    if len(parts) >= 2:
-                        full_addr = parts[0]
-                        result[full_addr] = line
+                    if len(parts) >= 1:
+                        result[parts[0]] = line
         except FileNotFoundError:
             pass
         return result
@@ -149,23 +145,21 @@ class MailInstance(meta.MetaDataPlaneModel):
     # -- MetaDataPlaneModel interface --
 
     def dump_to_dp(self) -> None:
-        users_content = self._build_users_file()
-        vmailbox_content = self._build_vmailbox_file()
-
-        users_changed = _write_file_atomic(constants.MAIL_USERS_FILE, users_content)
-        vmailbox_changed = _write_file_atomic(
-            constants.MAIL_VMAILBOX_FILE, vmailbox_content
+        exim4_changed = _write_file_atomic(
+            constants.EXIM4_PASSWD_FILE, self._build_exim4_passwd()
+        )
+        dovecot_changed = _write_file_atomic(
+            constants.MAIL_USERS_FILE, self._build_users_file()
         )
 
-        if vmailbox_changed:
-            _postmap(constants.MAIL_VMAILBOX_FILE)
-            _reload_postfix()
+        if exim4_changed:
+            _reload_exim4()
 
-        if users_changed:
+        if dovecot_changed:
             _reload_dovecot()
 
     def restore_from_dp(self) -> None:
-        actual = self._read_users_file()
+        actual = self._read_exim4_passwd()
         self.accounts = {}
         for full_addr in actual:
             if "@" in full_addr:
@@ -177,7 +171,6 @@ class MailInstance(meta.MetaDataPlaneModel):
                 }
 
     def delete_from_dp(self) -> None:
-        # Instance exists along with the VM — nothing to delete here
         pass
 
     def update_on_dp(self) -> None:

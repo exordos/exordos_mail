@@ -19,5 +19,6 @@ MAIL_ENV_FILE = "/etc/exordos_metapaas/mail.env"
 # Path to the Dovecot passwd-file managed by the DP agent.
 MAIL_USERS_FILE = "/etc/exordos_metapaas/mail.users"
 
-# Path to the Postfix virtual mailbox map managed by the DP agent.
-MAIL_VMAILBOX_FILE = "/etc/postfix/vmailbox"
+# Path to the exim4 passwd file managed by the DP agent (SMTP auth).
+# Format: username@domain:password_hash  (crypteq-compatible, SHA512-CRYPT)
+EXIM4_PASSWD_FILE = "/etc/exim4/passwd"

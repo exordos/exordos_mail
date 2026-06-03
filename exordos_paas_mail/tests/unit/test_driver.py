@@ -12,81 +12,83 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from unittest import mock
-
 import exordos_paas_mail.driver as drv_module
 
 
 class _Stub:
-    """Plain object that exposes the driver's file-building methods."""
+    """Plain object exposing MailInstance's file-building methods."""
 
     def __init__(self, domain, accounts):
         self.domain = domain
         self.accounts = accounts
 
+    _build_exim4_passwd = drv_module.MailInstance._build_exim4_passwd
     _build_users_file = drv_module.MailInstance._build_users_file
-    _build_vmailbox_file = drv_module.MailInstance._build_vmailbox_file
 
 
-class TestMailInstanceUsersFile:
-    def _make_instance(self, domain, accounts):
+class TestExim4Passwd:
+    def _make(self, domain, accounts):
         return _Stub(domain, accounts)
 
     def test_empty_accounts(self) -> None:
-        inst = self._make_instance("example.com", {})
+        inst = self._make("example.com", {})
+        assert inst._build_exim4_passwd() == ""
+
+    def test_active_account(self) -> None:
+        inst = self._make(
+            "example.com",
+            {"alice": {"password_hash": "{SHA512-CRYPT}$6$abc", "active": True, "quota_mb": 0}},
+        )
+        passwd = inst._build_exim4_passwd()
+        assert "alice@example.com:{SHA512-CRYPT}$6$abc" in passwd
+
+    def test_inactive_excluded(self) -> None:
+        inst = self._make(
+            "example.com",
+            {"bob": {"password_hash": "hash", "active": False, "quota_mb": 0}},
+        )
+        assert "bob@example.com" not in inst._build_exim4_passwd()
+
+    def test_multiple_accounts(self) -> None:
+        inst = self._make(
+            "example.com",
+            {
+                "alice": {"password_hash": "ha", "active": True, "quota_mb": 0},
+                "bob": {"password_hash": "hb", "active": True, "quota_mb": 0},
+            },
+        )
+        passwd = inst._build_exim4_passwd()
+        assert "alice@example.com:ha" in passwd
+        assert "bob@example.com:hb" in passwd
+
+
+class TestDovecotUsersFile:
+    def _make(self, domain, accounts):
+        return _Stub(domain, accounts)
+
+    def test_empty(self) -> None:
+        inst = self._make("example.com", {})
         assert inst._build_users_file() == ""
 
-    def test_single_active_account(self) -> None:
-        inst = self._make_instance(
+    def test_active_with_quota(self) -> None:
+        inst = self._make(
             "example.com",
-            {
-                "alice": {
-                    "password_hash": "{SHA512-CRYPT}$6$abc",
-                    "active": True,
-                    "quota_mb": 0,
-                }
-            },
+            {"carol": {"password_hash": "{SHA512-CRYPT}$6$qrs", "active": True, "quota_mb": 512}},
         )
-        content = inst._build_users_file()
-        assert "alice@example.com" in content
-        assert "{SHA512-CRYPT}$6$abc" in content
+        line = inst._build_users_file()
+        assert "carol@example.com" in line
+        assert "storage=512M" in line
 
-    def test_inactive_account_excluded(self) -> None:
-        inst = self._make_instance(
+    def test_inactive_excluded(self) -> None:
+        inst = self._make(
             "example.com",
-            {
-                "bob": {
-                    "password_hash": "{SHA512-CRYPT}$6$xyz",
-                    "active": False,
-                    "quota_mb": 0,
-                }
-            },
+            {"dave": {"password_hash": "h", "active": False, "quota_mb": 0}},
         )
-        content = inst._build_users_file()
-        assert "bob@example.com" not in content
+        assert "dave@example.com" not in inst._build_users_file()
 
-    def test_quota_included(self) -> None:
-        inst = self._make_instance(
-            "example.com",
-            {
-                "carol": {
-                    "password_hash": "{SHA512-CRYPT}$6$qrs",
-                    "active": True,
-                    "quota_mb": 512,
-                }
-            },
+    def test_home_path(self) -> None:
+        inst = self._make(
+            "test.local",
+            {"eve": {"password_hash": "h", "active": True, "quota_mb": 0}},
         )
-        content = inst._build_users_file()
-        assert "storage=512M" in content
-
-    def test_vmailbox_active_only(self) -> None:
-        inst = self._make_instance(
-            "example.com",
-            {
-                "dave": {"password_hash": "x", "active": True, "quota_mb": 0},
-                "eve": {"password_hash": "x", "active": False, "quota_mb": 0},
-            },
-        )
-        vmailbox = inst._build_vmailbox_file()
-        assert "dave@example.com" in vmailbox
-        assert "eve@example.com" not in vmailbox
+        assert "/var/mail/test.local/eve" in inst._build_users_file()
