@@ -1,6 +1,6 @@
 [project]
 name = "exordos_paas_mail"
-description = "Mail server PaaS plugin for the Exordos MetaPaaS runtime (Postfix + Dovecot)"
+description = "SMTP relay PaaS plugin for the Exordos MetaPaaS runtime (exim4)"
 readme = "README.md"
 authors = [{name = "Genesis Corporation", email = "mail@gmelikov.ru"}]
 dynamic = ["version"]

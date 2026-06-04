@@ -7,6 +7,7 @@ all: help
 
 help:
 	@echo "build            - build the mail-aas element manifest + DP image"
+	@echo "install          - install mail-aas element into Core"
 	@echo "wheel            - build Python wheel for exordos_paas_mail"
 	@echo "publish-wheel    - copy wheel to local pip index"
 	@echo "lint             - run ruff check"
@@ -19,6 +20,9 @@ build:
 	exordos build -c exordos/exordos.yaml -i $(SSH_KEY) -f \
 		--manifest-var repository=$(REPOSITORY) \
 		--manifest-var index_url=$(INDEX_URL)
+
+install:
+	exordos em elements install output/manifests/mail-aas.yaml
 
 wheel:
 	python -m build --wheel

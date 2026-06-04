@@ -1,6 +1,6 @@
-# mail-aas: Mail Server PaaS Plugin for MetaPaaS
+# mail-aas: SMTP Relay PaaS Plugin for MetaPaaS
 
-Mail server (Postfix SMTP + Dovecot IMAP/POP3) packaged as a MetaPaaS plugin,
+exim4 SMTP submission server packaged as a MetaPaaS plugin,
 following the same pattern as `metapaas_s3`.
 
 ## Architecture
@@ -13,11 +13,10 @@ metapaas-cp
     └── paas_builder: MailInstanceBuilder → MailInstanceNode → DP agent
 
 mail-aas-dp-<uuid> (VM)
-└── Postfix (SMTP 25/587) + Dovecot (IMAP 143/993)
-    ├── /etc/exordos_metapaas/mail.env    ← delivered by CP (MAIL_DOMAIN, MAIL_ROOT_PASSWORD)
-    ├── /etc/exordos_metapaas/mail.users  ← managed by DP agent (Dovecot passwd-file)
-    ├── /etc/postfix/vmailbox             ← managed by DP agent
-    └── exordos-universal-agent           ← MailCapabilityDriver
+└── exim4 (SMTP 25/465/587 — STARTTLS + auth)
+    ├── /etc/exordos_metapaas/mail.env  ← delivered by CP (MAIL_DOMAIN)
+    ├── /etc/exim4/passwd               ← managed by DP agent (lsearch auth)
+    └── exordos-universal-agent         ← MailCapabilityDriver
 ```
 
 ## Quick Start
@@ -37,7 +36,7 @@ Produces:
 ### Install on running metapaas
 
 ```bash
-exordos em elements install output/manifests/mail-aas.yaml
+make install
 ```
 
 PluginReconciler on metapaas-cp installs `exordos_paas_mail` via pip and
@@ -46,8 +45,7 @@ activates the `/v1/types/mail/` route.
 ### Create Instance
 
 ```bash
-# POST /v1/types/mail/instances
-curl -X POST http://metapaas-cp:8080/v1/types/mail/instances \
+curl -X POST http://metapaas-cp:8080/v1/types/mail/instances/ \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <token>' \
   -d '{
@@ -61,25 +59,29 @@ curl -X POST http://metapaas-cp:8080/v1/types/mail/instances \
   }'
 ```
 
-### Create Mail Account
+### Create SMTP Account
 
 ```bash
-# POST /v1/types/mail/instances/<uuid>/accounts
+# Generate SHA512-crypt hash (compatible with exim4 crypteq)
 HASH=$(openssl passwd -6 "mypassword")
-curl -X POST http://metapaas-cp:8080/v1/types/mail/instances/<uuid>/accounts \
+
+curl -X POST http://metapaas-cp:8080/v1/types/mail/instances/<uuid>/accounts/ \
   -H 'Content-Type: application/json' \
   -H 'Authorization: Bearer <token>' \
   -d "{
     \"username\": \"alice\",
-    \"password_hash\": \"{SHA512-CRYPT}${HASH}\",
+    \"password_hash\": \"${HASH}\",
     \"project_id\": \"4d657461-0000-0000-0000-000000000002\",
-    \"instance\": \"/v1/types/mail/instances/<uuid>\",
-    \"quota_mb\": 1024
+    \"instance\": \"/v1/types/mail/instances/<uuid>\"
   }"
 ```
 
-The agent on the DP node reconciles `/etc/exordos_metapaas/mail.users` (Dovecot
-passwd-file) and `/etc/postfix/vmailbox` within seconds.
+Within seconds the DP agent writes the account to `/etc/exim4/passwd` and
+reloads exim4. The user can then authenticate via SMTP AUTH (PLAIN/LOGIN over
+STARTTLS on port 587 or SMTPS on port 465).
+
+Hashes stored with a Dovecot `{SHA512-CRYPT}` scheme prefix are accepted — the
+driver strips the prefix before writing to exim4's passwd file.
 
 ## API Endpoints
 
@@ -93,7 +95,7 @@ passwd-file) and `/etc/postfix/vmailbox` within seconds.
 | GET    | `/v1/types/mail/versions/` | List DP image versions |
 | POST   | `/v1/types/mail/instances/<uuid>/accounts/` | Create account |
 | GET    | `/v1/types/mail/instances/<uuid>/accounts/` | List accounts |
-| PATCH  | `/v1/types/mail/instances/<uuid>/accounts/<uuid>` | Update (quota_mb, active, password_hash) |
+| PATCH  | `/v1/types/mail/instances/<uuid>/accounts/<uuid>` | Update (active, password_hash) |
 | DELETE | `/v1/types/mail/instances/<uuid>/accounts/<uuid>` | Delete account |
 
 ### Field permissions
@@ -103,18 +105,17 @@ passwd-file) and `/etc/postfix/vmailbox` within seconds.
 | `domain` | RW | RO | RO |
 | `status` | — | RO | RO |
 | `ipsv4` | — | RO | RO |
-| `root_password` | — | hidden | — |
 | `password_hash` | RW | hidden | RW |
 | `username` | RW | RO | RO |
+| `active` | RW | RW | RW |
 
 ## Repository Layout
 
 ```
 .
 ├── exordos_paas_mail/
-│   ├── constants.py          # MAIL_ENV_FILE, MAIL_USERS_FILE paths
+│   ├── constants.py          # MAIL_ENV_FILE, EXIM4_PASSWD_FILE paths
 │   ├── models.py             # MailVersion, MailInstance, MailAccount (restalchemy)
-│   ├── permissions.py        # PERMS_OWNER list
 │   ├── controllers.py        # REST controllers (gcl_iam policy-based)
 │   ├── routes.py             # Route tree (instances/accounts, versions)
 │   ├── definition.py         # MailDefinition (PaaSDefinition contract)
@@ -122,27 +123,32 @@ passwd-file) and `/etc/postfix/vmailbox` within seconds.
 │   ├── infra_builder.py      # CoreInfraBuilder (creates VMs + delivers mail.env)
 │   ├── paas_models.py        # MailInstanceNode (target resource for DP agent)
 │   ├── paas_builder.py       # MailInstanceBuilder (maps accounts → DP payload)
-│   ├── driver.py             # MailCapabilityDriver + MailInstance (Dovecot/Postfix reconcile)
+│   ├── driver.py             # MailCapabilityDriver: writes /etc/exim4/passwd
 │   ├── utils.py              # remove_nested_dm helper
 │   ├── migrations/
-│   │   └── 0000-init-mail.py # Creates mail_versions, mail_instances, mail_accounts tables
+│   │   ├── 0000-init-mail.py # Creates mail_versions, mail_instances, mail_accounts
+│   │   └── 0001-drop-root-password.py
 │   └── tests/
 │       ├── unit/             # Unit tests (models, driver)
-│       └── functional/       # E2E tests (prepare_env.py + test_mail_provision.py)
+│       └── functional/       # E2E tests (prepare_env.py + SMTP auth tests)
 ├── exordos/
 │   ├── exordos.yaml          # Build config (deps + elements + DP image)
 │   ├── images/
-│   │   ├── dp_install.sh     # Packer: install Postfix/Dovecot/agent
+│   │   ├── dp_install.sh     # Packer: install exim4 + configure script + agent
 │   │   └── dp_bootstrap.sh   # First-boot: persistent disk + start configure service
 │   └── manifests/
 │       ├── mail-aas.yaml.j2  # Element manifest: type reg + IAM + DP version
 │       └── example_mail.yaml.j2  # Example consumer element
 ├── etc/
 │   ├── systemd/
-│   │   ├── exordos-metapaas-mail-configure.service  # Configures Postfix/Dovecot from mail.env
+│   │   ├── exordos-metapaas-mail-configure.service  # Configures exim4 from mail.env
 │   │   └── exordos-metapaas-mail-agent.service      # Universal agent (MailCapabilityDriver)
 │   └── exordos_metapaas/
-│       └── metapaas_mail_agent.conf  # Agent config (uuid5_name=mail-aas, endpoints)
+│       ├── logging.yaml
+│       └── metapaas_mail_agent.conf
+├── .github/workflows/
+│   ├── tests.yaml            # Lint (ruff) on every push
+│   └── func_tests.yaml       # Full e2e: bootstrap core + deploy + SMTP tests
 ├── pyproject.toml
 ├── tox.ini
 └── Makefile
@@ -168,7 +174,7 @@ python exordos_paas_mail/tests/functional/prepare_env.py \
   --endpoint http://10.20.0.2:11010 \
   --username admin --password <pass>
 
-export EXORDOS_MAIL_CP_URL=http://10.20.0.X:8080
+# Use env vars printed by prepare_env.py, then:
 tox -e py312-functional
 ```
 
@@ -176,11 +182,12 @@ tox -e py312-functional
 
 | Aspect | s3aas | mail-aas |
 |--------|-------|---------|
-| DP software | RustFS | Postfix + Dovecot |
+| DP software | RustFS | exim4 (SMTP relay) |
 | Instance children | Bucket, Policy, User, AccessKey | Account |
-| Replicas | 1–16 (single_node default) | Always 1 |
-| Config delivered | `rustfs.env` (creds + ports) | `mail.env` (domain + root password) |
-| On-change | `systemctl restart exordos-metapaas-rustfs` | `systemctl restart exordos-metapaas-mail-configure` |
+| Replicas | 1–16 | Always 1 |
+| Config delivered | `rustfs.env` | `mail.env` (domain only) |
+| DP auth state | S3 access keys | `/etc/exim4/passwd` (SHA512-crypt) |
+| On-change | `systemctl restart rustfs` | `systemctl restart mail-configure` |
 | DP agent state file | `s3_meta.json` | `mail_meta.json` |
 | uuid5 name | `s3aas` | `mail-aas` |
 
