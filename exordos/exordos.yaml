@@ -16,7 +16,7 @@ build:
   deps:
     - dst: /opt/exordos_metapaas
       path:
-        src: ../../metapaas_mail
+        src: ../../exordos_mail
       exclude:
         - .venv
         - .tox
@@ -32,15 +32,15 @@ build:
         - output
 
   elements:
-    # mail-aas install manifest: registers the mail PaaS type in metapaas,
-    # IAM permissions and the mail-aas-namespaced dataplane version.
-    - manifest: manifests/mail-aas.yaml.j2
+    # mailaas install manifest: registers the mail PaaS type in metapaas,
+    # IAM permissions and the mailaas-namespaced dataplane version.
+    - manifest: manifests/mailaas.yaml.j2
 
     # Example consumer element: declaratively creates a mail instance.
     - manifest: manifests/example_mail.yaml.j2
 
     # mail dataplane image (launched per mail instance by the infra builder)
-    - manifest: manifests/mail-aas.yaml.j2
+    - manifest: manifests/mailaas.yaml.j2
       images:
       - name: exordos-metapaas-mail-dp
         format: GEN_IMG_FORMAT_CORE=zst

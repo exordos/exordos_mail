@@ -18,11 +18,12 @@ import uuid as sys_uuid
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.paas.services import builder
+from restalchemy.storage import exceptions as storage_exceptions
 
 from exordos_mail.controlplane.paas.dm import models
 
 LOG = logging.getLogger(__name__)
-AGENT_UUID5_NAME = "mail-aas"
+AGENT_UUID5_NAME = "mailaas"
 
 
 class PaaSBuilder(builder.PaaSBuilder):
@@ -57,23 +58,22 @@ class MailInstanceBuilder(PaaSBuilder):
             }
         return result
 
-    def create_paas_objects(
+    def _build_paas_objects(
         self, instance: models.MailInstance
     ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
-        return self.actualize_paas_objects(
-            instance, builder.PaaSCollection(paas_objects=tuple())
-        )
+        try:
+            nodeset = instance.get_actual_nodeset()
+        except storage_exceptions.RecordNotFound:
+            LOG.debug(
+                "Nodeset for mail instance %s not ready yet, skipping", instance.uuid
+            )
+            return []
 
-    def actualize_paas_objects(
-        self,
-        instance: models.MailInstance,
-        paas_collection: builder.PaaSCollection,
-    ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
-        accounts = self._get_accounts(instance)
-
-        nodeset = instance.get_actual_nodeset()
         nodes_by_idx = list(nodeset.nodes.keys())
+        if not nodes_by_idx:
+            return []
 
+        accounts = self._get_accounts(instance)
         # Mail is always single-node
         node_uuid = sys_uuid.UUID(nodes_by_idx[0])
         return [
@@ -82,5 +82,50 @@ class MailInstanceBuilder(PaaSBuilder):
                 name=instance.name,
                 domain=instance.domain,
                 accounts=accounts,
+                dkim_public_key=instance.dkim_public_key,
+                dkim_selector=instance.dkim_selector,
             )
         ]
+
+    def _sync_dkim_from_actuals(
+        self,
+        instance: models.MailInstance,
+        paas_collection: builder.PaaSCollection,
+    ) -> None:
+        """Surface the DKIM public key discovered on the data plane.
+
+        The configure script generates the key on the node; the DP agent
+        reports it back on the actual ``mail_instance_node`` resource. Copy it
+        onto the user-facing instance so it can be read via the API and
+        published in DNS. The framework persists the instance afterwards.
+        """
+        for actual in paas_collection.actuals():
+            if actual is None:
+                continue
+            pubkey = getattr(actual, "dkim_public_key", "") or ""
+            selector = getattr(actual, "dkim_selector", "") or ""
+            if pubkey and (
+                instance.dkim_public_key != pubkey or instance.dkim_selector != selector
+            ):
+                instance.dkim_public_key = pubkey
+                instance.dkim_selector = selector
+
+    def create_paas_objects(
+        self, instance: models.MailInstance
+    ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
+        return self._build_paas_objects(instance)
+
+    def actualize_paas_objects(
+        self,
+        instance: models.MailInstance,
+        paas_collection: builder.PaaSCollection,
+    ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
+        return self._build_paas_objects(instance)
+
+    def actualize_paas_objects_source_data_plane(
+        self,
+        instance: models.MailInstance,
+        paas_collection: builder.PaaSCollection,
+    ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
+        self._sync_dkim_from_actuals(instance, paas_collection)
+        return self.actualize_paas_objects(instance, paas_collection)

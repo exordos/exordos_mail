@@ -1,4 +1,4 @@
-# mail-aas: SMTP Relay PaaS Plugin for MetaPaaS
+# mailaas: SMTP Relay PaaS Plugin for MetaPaaS
 
 exim4 SMTP submission server packaged as a MetaPaaS plugin,
 following the same pattern as `metapaas_s3`.
@@ -12,7 +12,7 @@ metapaas-cp
     ├── infra_builder: CoreInfraBuilder → NodeSet + Config on core
     └── paas_builder: MailInstanceBuilder → MailInstanceNode → DP agent
 
-mail-aas-dp-<uuid> (VM)
+mailaas-dp-<uuid> (VM)
 └── exim4 (SMTP 25/465/587 — STARTTLS + auth)
     ├── /etc/exordos_metapaas/mail.env  ← delivered by CP (MAIL_DOMAIN)
     ├── /etc/exim4/passwd               ← managed by DP agent (lsearch auth)
@@ -31,7 +31,7 @@ make build \
 
 Produces:
 - `output/images/exordos-metapaas-mail-dp.raw.zst` (DP image)
-- `output/manifests/mail-aas.yaml` (element manifest)
+- `output/manifests/mailaas.yaml` (element manifest)
 
 ### Install on running metapaas
 
@@ -83,6 +83,29 @@ STARTTLS on port 587 or SMTPS on port 465).
 Hashes stored with a Dovecot `{SHA512-CRYPT}` scheme prefix are accepted — the
 driver strips the prefix before writing to exim4's passwd file.
 
+### Configure DNS
+
+For mail to be accepted by other servers you must publish a few DNS records for
+your domain (referred to below as `$1`, e.g. `example.com`).
+
+- **DKIM** — the key is generated on the node by the configure script. Once the
+  instance is `ACTIVE`, read it from the API:
+
+  ```bash
+  curl -s http://metapaas-cp:8080/v1/types/mail/instances/<uuid> \
+    -H 'Authorization: Bearer <token>' | jq -r '{dkim_selector, dkim_public_key}'
+  ```
+
+  Publish it as a `TXT` record at `<dkim_selector>._domainkey.$1`
+  (default selector: `platform`), with the `dkim_public_key` value as data.
+  The raw record is also on the node at `/etc/exim4/dkim/platform.txt`.
+- **SPF** — name: `@` (the domain itself), type: `TXT`, TTL: 3600,
+  data: `"v=spf1 ip4:YOUR_SERVER_IP/32 a mx ~all"`
+- **DMARC** — name: `_dmarc`, type: `TXT`, TTL: 3600,
+  data: `"v=DMARC1; p=none; pct=100; adkim=s; aspf=s"`
+- **PTR** — set the reverse record for your server IP to `$1`
+- **MX** — ensure an `MX` record exists (e.g. name: `@`, type: `MX`, data: `$1`)
+
 ## API Endpoints
 
 | Method | Path | Description |
@@ -105,6 +128,8 @@ driver strips the prefix before writing to exim4's passwd file.
 | `domain` | RW | RO | RO |
 | `status` | — | RO | RO |
 | `ipsv4` | — | RO | RO |
+| `dkim_public_key` | — | RO | RO |
+| `dkim_selector` | — | RO | RO |
 | `password_hash` | RW | hidden | RW |
 | `username` | RW | RO | RO |
 | `active` | RW | RW | RW |
@@ -137,7 +162,7 @@ driver strips the prefix before writing to exim4's passwd file.
 │   │   ├── dp_install.sh     # Packer: install exim4 + configure script + agent
 │   │   └── dp_bootstrap.sh   # First-boot: persistent disk + start configure service
 │   └── manifests/
-│       ├── mail-aas.yaml.j2  # Element manifest: type reg + IAM + DP version
+│       ├── mailaas.yaml.j2  # Element manifest: type reg + IAM + DP version
 │       └── example_mail.yaml.j2  # Example consumer element
 ├── etc/
 │   ├── systemd/
@@ -180,7 +205,7 @@ tox -e py312-functional
 
 ## Key differences from metapaas_s3
 
-| Aspect | s3aas | mail-aas |
+| Aspect | s3aas | mailaas |
 |--------|-------|---------|
 | DP software | RustFS | exim4 (SMTP relay) |
 | Instance children | Bucket, Policy, User, AccessKey | Account |
@@ -189,7 +214,7 @@ tox -e py312-functional
 | DP auth state | S3 access keys | `/etc/exim4/passwd` (SHA512-crypt) |
 | On-change | `systemctl restart rustfs` | `systemctl restart mail-configure` |
 | DP agent state file | `s3_meta.json` | `mail_meta.json` |
-| uuid5 name | `s3aas` | `mail-aas` |
+| uuid5 name | `s3aas` | `mailaas` |
 
 ## References
 

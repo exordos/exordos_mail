@@ -19,3 +19,11 @@ MAIL_ENV_FILE = "/etc/exordos_metapaas/mail.env"
 # Path to the exim4 passwd file managed by the DP agent (SMTP auth).
 # Format: username@domain:password_hash  (crypteq-compatible, SHA512-CRYPT)
 EXIM4_PASSWD_FILE = "/etc/exim4/passwd"
+
+# DKIM selector used by the configure script (opendkim-genkey -s platform).
+DKIM_SELECTOR = "platform"
+
+# Path to the DKIM public key record generated on the dataplane by the
+# configure script. The file holds the DNS TXT record (split into quoted
+# chunks) that must be published at <selector>._domainkey.<domain>.
+EXIM4_DKIM_TXT_FILE = f"/etc/exim4/dkim/{DKIM_SELECTOR}.txt"

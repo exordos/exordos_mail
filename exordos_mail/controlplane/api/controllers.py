@@ -57,6 +57,8 @@ class MailInstanceController(
             fields={
                 "status": {constants.ALL: field_p.Permissions.RO},
                 "ipsv4": {constants.ALL: field_p.Permissions.RO},
+                "dkim_public_key": {constants.ALL: field_p.Permissions.RO},
+                "dkim_selector": {constants.ALL: field_p.Permissions.RO},
                 "domain": {
                     constants.ALL: field_p.Permissions.RO,
                     constants.CREATE: field_p.Permissions.RW,

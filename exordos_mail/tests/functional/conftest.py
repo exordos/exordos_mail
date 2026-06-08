@@ -96,7 +96,9 @@ def mail_cp_ip(core_client) -> str:
         all_nodes = core_client.filter(NODE_COLLECTION)
         nodes = [n for n in all_nodes if "metapaas" in n.get("name", "").lower()]
     if not nodes:
-        pytest.skip("No metapaas-cp compute node found — is metapaas element installed?")
+        pytest.skip(
+            "No metapaas-cp compute node found — is metapaas element installed?"
+        )
     node = nodes[0]
     net = node.get("default_network", {})
     ip = net.get("ipv4")
@@ -170,7 +172,7 @@ def mail_api_client(
 def mail_version_uuid(metapaas_admin_client) -> str:
     versions = metapaas_admin_client.filter(MAIL_VERSIONS)
     if not versions:
-        pytest.skip("No mail versions registered — is mail-aas element installed?")
+        pytest.skip("No mail versions registered — is mailaas element installed?")
     return versions[0]["uuid"]
 
 

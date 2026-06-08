@@ -36,6 +36,11 @@ class MailInstanceNode(
     name = properties.property(ra_types.String(min_length=1, max_length=64))
     domain = properties.property(ra_types.String(min_length=1, max_length=255))
     accounts = properties.property(ra_types.Dict())
+    # DKIM facts reported back from the data plane (read-only outputs). Kept
+    # out of the target fields so they don't drive reconciliation; surfaced to
+    # the user-facing MailInstance by the builder.
+    dkim_public_key = properties.property(ra_types.String(max_length=4096), default="")
+    dkim_selector = properties.property(ra_types.String(max_length=255), default="")
 
     @classmethod
     def get_resource_kind(cls) -> str:

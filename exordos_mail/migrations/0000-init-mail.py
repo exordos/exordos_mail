@@ -1,5 +1,7 @@
 #    Copyright 2026 Genesis Corporation.
 #
+#    All Rights Reserved.
+#
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
@@ -52,6 +54,8 @@ CREATE TABLE mail_instances (
     disk_size INT NOT NULL CHECK (disk_size BETWEEN 8 AND 1073741824),
     version UUID NOT NULL,
     "ipsv4" VARCHAR(15) ARRAY,
+    dkim_public_key TEXT NOT NULL DEFAULT '',
+    dkim_selector VARCHAR(255) NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     FOREIGN KEY (version) REFERENCES mail_versions(uuid)

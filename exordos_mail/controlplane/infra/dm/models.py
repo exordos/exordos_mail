@@ -81,7 +81,7 @@ class MailInstance(models.MailInstance, ua_models.InstanceWithDerivativesMixin):
 
         node_set = sdk_models.NodeSet(
             uuid=self.uuid,
-            name=f"mail-aas-dp-{self.uuid}",
+            name=f"mailaas-dp-{self.uuid}",
             cores=self.cpu,
             ram=self.ram,
             disk_spec=sdk_models.SetDisksSpec(

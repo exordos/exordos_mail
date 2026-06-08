@@ -12,7 +12,8 @@ dependencies = [
     "gcl_iam>=1.0.3,<2.0.0",
     "gcl_looper>=1.2.3,<2.0.0",
     "gcl_sdk>=3.0.0,<4.0.0",
-    "exordos_metapaas>=0.0.5",
+    "exordos_metapaas>=0.0.1",
+    "passlib>=1.7.0",
 ]
 
 [project.entry-points."exordos_metapaas_paas"]

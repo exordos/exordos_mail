@@ -24,6 +24,7 @@ class _Stub:
 
     _build_exim4_passwd = drv_module.MailInstance._build_exim4_passwd
     _strip_dovecot_prefix = staticmethod(drv_module.MailInstance._strip_dovecot_prefix)
+    _parse_dkim_txt = staticmethod(drv_module.MailInstance._parse_dkim_txt)
 
 
 class TestStripDovecotPrefix:
@@ -82,3 +83,20 @@ class TestExim4Passwd:
         passwd = inst._build_exim4_passwd()
         assert "alice@example.com:$6$ha" in passwd
         assert "bob@example.com:$6$hb" in passwd
+
+
+class TestParseDkimTxt:
+    def test_concatenates_quoted_chunks(self) -> None:
+        content = (
+            'platform._domainkey\tIN\tTXT\t( "v=DKIM1; h=sha256; k=rsa; "\n'
+            '\t  "p=MIGfMA0GCSqAB" )  ; ----- DKIM key platform for example.com\n'
+        )
+        assert _Stub._parse_dkim_txt(content) == (
+            "v=DKIM1; h=sha256; k=rsa; p=MIGfMA0GCSqAB"
+        )
+
+    def test_single_chunk(self) -> None:
+        assert _Stub._parse_dkim_txt('"v=DKIM1; p=ABC"') == "v=DKIM1; p=ABC"
+
+    def test_empty_content(self) -> None:
+        assert _Stub._parse_dkim_txt("") == ""

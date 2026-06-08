@@ -76,11 +76,16 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
         for target, actual in infra.infra_objects:
             if target.get_resource_kind() == NODE_SET_KIND:
                 nodeset = actual
-            elif actual.get_resource_kind() == CONFIG_KIND:
+            elif actual is not None and actual.get_resource_kind() == CONFIG_KIND:
                 configs.append(actual)
 
+        if nodeset is None:
+            return tuple()
+
         if nodeset.nodes:
-            instance.ipsv4 = [node["ipv4"] for node in nodeset.nodes.values()]
+            instance.ipsv4 = [
+                node["ipv4"] for node in nodeset.nodes.values() if node.get("ipv4")
+            ]
 
         new_objects = []
 

@@ -6,9 +6,9 @@ INDEX_URL  ?= http://10.20.0.1:8080/simple/
 all: help
 
 help:
-	@echo "build            - build the mail-aas element manifest + DP image"
-	@echo "install          - install mail-aas element into Core"
-	@echo "wheel            - build Python wheel for exordos_paas_mail"
+	@echo "build            - build the mailaas element manifest + DP image"
+	@echo "install          - install mailaas element into Core"
+	@echo "wheel            - build Python wheel for exordos_mail"
 	@echo "publish-wheel    - copy wheel to local pip index"
 	@echo "lint             - run ruff check"
 	@echo "format           - run ruff format"
@@ -22,13 +22,13 @@ build:
 		--manifest-var index_url=$(INDEX_URL)
 
 install:
-	exordos em elements install output/manifests/mail-aas.yaml
+	exordos em elements install output/manifests/mailaas.yaml
 
 wheel:
 	python -m build --wheel
 
 publish-wheel: wheel
-	cp dist/exordos_paas_mail-*.whl /srv/exordos-local-repo/simple/
+	cp dist/exordos_mail-*.whl /srv/exordos-local-repo/simple/
 
 lint:
 	tox -e ruff-check

@@ -14,6 +14,8 @@
 
 import enum
 
+from passlib.hash import sha512_crypt as _sha512_crypt
+
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models
 from restalchemy.dm import properties
@@ -23,6 +25,11 @@ from restalchemy.storage.sql import orm
 from gcl_sdk.agents.universal.dm import models as ua_models
 
 from exordos_mail import utils as u
+
+
+def _is_crypt_hash(value: str) -> bool:
+    """Return True if value is already a crypt hash or has a Dovecot-style prefix."""
+    return value.startswith("$") or (value.startswith("{") and "}" in value)
 
 
 class MailStatus(str, enum.Enum):
@@ -69,6 +76,11 @@ class MailInstance(
     ram = properties.property(types.Integer(min_value=512, max_value=1024**3))
     disk_size = properties.property(types.Integer(min_value=8, max_value=1024**3))
     version = relationships.relationship(MailVersion, required=True, read_only=True)
+    # DKIM public key reported back from the data plane — publish it in DNS at
+    # <dkim_selector>._domainkey.<domain>. Populated by the paas builder once
+    # the configure script has generated the key on the node.
+    dkim_public_key = properties.property(types.String(max_length=4096), default="")
+    dkim_selector = properties.property(types.String(max_length=255), default="")
 
     def get_accounts(self, session=None):
         return MailAccount.objects.get_all(
@@ -111,11 +123,17 @@ class MailAccount(
     def _touch_parent(self, session=None):
         self.instance.update(force=True)
 
+    def _maybe_hash_password(self):
+        if self.password_hash and not _is_crypt_hash(self.password_hash):
+            self.password_hash = _sha512_crypt.hash(self.password_hash)
+
     def insert(self, session=None):
+        self._maybe_hash_password()
         super().insert(session=session)
         self._touch_parent(session=session)
 
     def update(self, session=None, force=False):
+        self._maybe_hash_password()
         super().update(session=session, force=force)
         self._touch_parent(session=session)
 

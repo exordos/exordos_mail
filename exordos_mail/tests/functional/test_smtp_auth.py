@@ -44,7 +44,9 @@ _TLS_CTX.check_hostname = False
 _TLS_CTX.verify_mode = ssl.CERT_NONE  # self-signed cert on DP
 
 
-def _smtp_login(host: str, username: str, password: str, port: int = 587, timeout: int = 10):
+def _smtp_login(
+    host: str, username: str, password: str, port: int = 587, timeout: int = 10
+):
     """Open STARTTLS SMTP connection and attempt AUTH PLAIN.
 
     Returns the open smtp object on success so the caller can send mail.
@@ -94,9 +96,7 @@ def _wait_for_auth(
             + (f": {last_exc}" if last_exc else "")
         )
     else:
-        raise TimeoutError(
-            f"SMTP auth for {username!r} did not fail within {timeout}s"
-        )
+        raise TimeoutError(f"SMTP auth for {username!r} did not fail within {timeout}s")
 
 
 def _sha512_crypt(password: str) -> str:
@@ -175,7 +175,9 @@ class TestSmtpAuthBasic:
         """Creating an account → SMTP AUTH with correct password succeeds."""
         username = f"valid-{uuid.uuid4().hex[:8]}"
         password = "CorrectHorseBatteryStaple1"
-        _make_account(mail_api_client, mail_instance_uuid, mail_project_id, username, password)
+        _make_account(
+            mail_api_client, mail_instance_uuid, mail_project_id, username, password
+        )
 
         _wait_for_auth(dp_host, f"{username}@{domain}", password, expect_success=True)
 
@@ -193,7 +195,9 @@ class TestSmtpAuthBasic:
         """SMTP AUTH with wrong password must return 535."""
         username = f"badpw-{uuid.uuid4().hex[:8]}"
         password = "TheRealPassword99"
-        _make_account(mail_api_client, mail_instance_uuid, mail_project_id, username, password)
+        _make_account(
+            mail_api_client, mail_instance_uuid, mail_project_id, username, password
+        )
         _wait_for_auth(dp_host, f"{username}@{domain}", password, expect_success=True)
 
         with pytest.raises(smtplib.SMTPAuthenticationError) as exc_info:
@@ -226,8 +230,12 @@ class TestSmtpAuthBasic:
         username = f"prefix-{uuid.uuid4().hex[:8]}"
         password = "PrefixTest66"
         _make_account(
-            mail_api_client, mail_instance_uuid, mail_project_id,
-            username, password, dovecot_prefix=True,
+            mail_api_client,
+            mail_instance_uuid,
+            mail_project_id,
+            username,
+            password,
+            dovecot_prefix=True,
         )
         _wait_for_auth(dp_host, f"{username}@{domain}", password, expect_success=True)
 
@@ -287,7 +295,9 @@ class TestSmtpAuthSync:
         acc = _make_account(
             mail_api_client, mail_instance_uuid, mail_project_id, username, old_password
         )
-        _wait_for_auth(dp_host, f"{username}@{domain}", old_password, expect_success=True)
+        _wait_for_auth(
+            dp_host, f"{username}@{domain}", old_password, expect_success=True
+        )
 
         new_hash = "{SHA512-CRYPT}" + crypt.crypt(
             new_password, crypt.mksalt(crypt.METHOD_SHA512)
@@ -295,7 +305,9 @@ class TestSmtpAuthSync:
         collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
         mail_api_client.update(collection, uuid=acc["uuid"], password_hash=new_hash)
 
-        _wait_for_auth(dp_host, f"{username}@{domain}", new_password, expect_success=True)
+        _wait_for_auth(
+            dp_host, f"{username}@{domain}", new_password, expect_success=True
+        )
 
         with pytest.raises(smtplib.SMTPAuthenticationError):
             _smtp_login(dp_host, f"{username}@{domain}", old_password)
@@ -309,12 +321,18 @@ class TestSmtpAuthSync:
         alice_pw = "AliceSecret42"
         bob_pw = "BobSecret43"
         alice = _make_account(
-            mail_api_client, mail_instance_uuid, mail_project_id,
-            f"alice-{uuid.uuid4().hex[:6]}", alice_pw,
+            mail_api_client,
+            mail_instance_uuid,
+            mail_project_id,
+            f"alice-{uuid.uuid4().hex[:6]}",
+            alice_pw,
         )
         bob = _make_account(
-            mail_api_client, mail_instance_uuid, mail_project_id,
-            f"bob-{uuid.uuid4().hex[:6]}", bob_pw,
+            mail_api_client,
+            mail_instance_uuid,
+            mail_project_id,
+            f"bob-{uuid.uuid4().hex[:6]}",
+            bob_pw,
         )
         alice_addr = f"{alice['username']}@{domain}"
         bob_addr = f"{bob['username']}@{domain}"

@@ -7,7 +7,7 @@ Steps:
   3. Build metapaas_mail DP image + wheel (from --project-dir).
   4. Serve both via a local HTTP server.
   5. Install metapaas element; wait for CP node ACTIVE.
-  6. Install mail-aas element; wait for PluginReconciler to activate mail plugin.
+  6. Install mailaas element; wait for PluginReconciler to activate mail plugin.
   7. Print env vars needed by the functional test suite.
 
 Usage::
@@ -64,12 +64,37 @@ def _generate_ssh_key(key_dir: pathlib.Path) -> tuple[str, str]:
     if pub.exists():
         _log(f"SSH public key already exists: {pub}")
         return str(priv), str(pub)
-    _run(["ssh-keygen", "-t", "rsa", "-b", "4096", "-f", str(priv), "-N", "", "-C", "exordos-test"])
+    _run(
+        [
+            "ssh-keygen",
+            "-t",
+            "rsa",
+            "-b",
+            "4096",
+            "-f",
+            str(priv),
+            "-N",
+            "",
+            "-C",
+            "exordos-test",
+        ]
+    )
     return str(priv), str(pub)
 
 
-def _build(project_dir: str, output_dir: str, pub_key: str, manifest_vars: dict) -> None:
-    cmd = ["exordos", "build", "-i", pub_key, "-f", "--output-dir", output_dir, project_dir]
+def _build(
+    project_dir: str, output_dir: str, pub_key: str, manifest_vars: dict
+) -> None:
+    cmd = [
+        "exordos",
+        "build",
+        "-i",
+        pub_key,
+        "-f",
+        "--output-dir",
+        output_dir,
+        project_dir,
+    ]
     for k, v in manifest_vars.items():
         cmd += ["--manifest-var", f"{k}={v}"]
     _run(cmd)
@@ -78,8 +103,10 @@ def _build(project_dir: str, output_dir: str, pub_key: str, manifest_vars: dict)
 def _build_wheel(project_dir: str, output_dir: str) -> pathlib.Path:
     dist_dir = pathlib.Path(output_dir) / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
-    _run([sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
-         cwd=project_dir)
+    _run(
+        [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
+        cwd=project_dir,
+    )
     wheels = list(dist_dir.glob("exordos_mail-*.whl"))
     if not wheels:
         raise FileNotFoundError(f"No wheel found in {dist_dir}")
@@ -97,7 +124,8 @@ def _start_http_server(serve_dir: str, port: int) -> subprocess.Popen:
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "http.server", str(port), "--directory", serve_dir],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid,
     )
     time.sleep(1)
@@ -132,19 +160,19 @@ def _publish_to_serve_dir(
             shutil.copy2(img, dst)
         _log(f"  metapaas image: metapaas/{mp_ver}/images/{img.name}")
 
-    # mail-aas DP image + manifest
+    # mailaas DP image + manifest
     mail_ver = _read_version(mail_output)
-    mail_img_dir = serve_root / "mail-aas" / mail_ver / "images"
+    mail_img_dir = serve_root / "mailaas" / mail_ver / "images"
     mail_img_dir.mkdir(parents=True, exist_ok=True)
     for img in (mail_output / "images").glob("*.zst"):
         dst = mail_img_dir / img.name
         if not dst.exists():
             shutil.copy2(img, dst)
-        _log(f"  mail-aas DP image: mail-aas/{mail_ver}/images/{img.name}")
+        _log(f"  mailaas DP image: mailaas/{mail_ver}/images/{img.name}")
     for mf in (mail_output / "manifests").glob("*.yaml"):
-        dst = serve_root / "mail-aas" / mail_ver / mf.name
+        dst = serve_root / "mailaas" / mail_ver / mf.name
         shutil.copy2(mf, dst)
-        _log(f"  mail-aas manifest: mail-aas/{mail_ver}/{mf.name}")
+        _log(f"  mailaas manifest: mailaas/{mail_ver}/{mf.name}")
 
     # pip wheel
     pip_dir = serve_root / "simple"
@@ -156,10 +184,24 @@ def _publish_to_serve_dir(
 
 
 def _ee_install(name, version, repository, endpoint, username, password):
-    _run([
-        "exordos", "-e", endpoint, "-u", username, "-p", password,
-        "ee", "install", name, "--version", version, "--repository", repository,
-    ])
+    _run(
+        [
+            "exordos",
+            "-e",
+            endpoint,
+            "-u",
+            username,
+            "-p",
+            password,
+            "ee",
+            "install",
+            name,
+            "--version",
+            version,
+            "--repository",
+            repository,
+        ]
+    )
 
 
 def _wait_for_element(name, target, endpoint, username, password, timeout=300):
@@ -168,7 +210,8 @@ def _wait_for_element(name, target, endpoint, username, password, timeout=300):
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["exordos", "-e", endpoint, "-u", username, "-p", password, "ee", "list"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         for line in result.stdout.splitlines():
             if name in line:
@@ -187,11 +230,13 @@ def _wait_for_node(name_pattern, endpoint, username, password, timeout=300):
     while time.monotonic() < deadline:
         result = subprocess.run(
             ["exordos", "-e", endpoint, "-u", username, "-p", password, "cn", "list"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         for line in result.stdout.splitlines():
             if name_pattern in line and "ACTIVE" in line:
                 import re
+
                 m = re.search(r"\b(10\.\d+\.\d+\.\d+)\b", line)
                 if m:
                     ip = m.group(1)
@@ -204,9 +249,18 @@ def _wait_for_node(name_pattern, endpoint, username, password, timeout=300):
 def _get_metapaas_iam_password(cp_ip):
     try:
         result = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
-             f"root@{cp_ip}", "grep IAM_USER_PASS /etc/exordos_init.txt | cut -d= -f2"],
-            capture_output=True, text=True, timeout=30,
+            [
+                "ssh",
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "ConnectTimeout=10",
+                f"root@{cp_ip}",
+                "grep IAM_USER_PASS /etc/exordos_init.txt | cut -d= -f2",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
         )
         pw = result.stdout.strip()
         if pw:
@@ -234,7 +288,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--metapaas-version", default="0.0.1")
     p.add_argument("--mail-version", default="0.0.1")
     p.add_argument("--skip-install", action="store_true")
-    p.add_argument("--endpoint", default=os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2:11010"))
+    p.add_argument(
+        "--endpoint",
+        default=os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2:11010"),
+    )
     p.add_argument("--username", default=os.environ.get("EXORDOS_USERNAME", "admin"))
     p.add_argument("--password", default=os.environ.get("EXORDOS_PASSWORD", ""))
     p.add_argument("--wait-timeout", type=int, default=600)
@@ -246,7 +303,8 @@ def main(argv=None):
 
     output_dir = pathlib.Path(args.output_dir)
     key_dir = (
-        pathlib.Path(args.key_dir) if args.key_dir
+        pathlib.Path(args.key_dir)
+        if args.key_dir
         else pathlib.Path(tempfile.gettempdir()) / "exordos-test-keys"
     )
 
@@ -261,7 +319,7 @@ def main(argv=None):
         index_url = f"http://{host}:{port}/simple/"
 
     metapaas_output = output_dir / "metapaas"
-    mail_output = output_dir / "mail-aas"
+    mail_output = output_dir / "mailaas"
     serve_root = output_dir / "serve"
     wheel_output = output_dir / "wheel"
 
@@ -305,20 +363,43 @@ def main(argv=None):
         return
 
     _log("Step 4: Installing metapaas element")
-    _ee_install("metapaas", args.metapaas_version, repository_url,
-                args.endpoint, args.username, args.password)
+    _ee_install(
+        "metapaas",
+        args.metapaas_version,
+        repository_url,
+        args.endpoint,
+        args.username,
+        args.password,
+    )
 
     _log("Step 4a: Waiting for metapaas CP node ACTIVE")
-    cp_ip = _wait_for_node("metapaas-cp", args.endpoint, args.username, args.password,
-                            timeout=args.wait_timeout)
+    cp_ip = _wait_for_node(
+        "metapaas-cp",
+        args.endpoint,
+        args.username,
+        args.password,
+        timeout=args.wait_timeout,
+    )
 
-    _log("Step 5: Installing mail-aas element")
-    _ee_install("mail-aas", args.mail_version, repository_url,
-                args.endpoint, args.username, args.password)
+    _log("Step 5: Installing mailaas element")
+    _ee_install(
+        "mailaas",
+        args.mail_version,
+        repository_url,
+        args.endpoint,
+        args.username,
+        args.password,
+    )
 
-    _log("Step 5a: Waiting for mail-aas element ACTIVE")
-    _wait_for_element("mail-aas", "ACTIVE", args.endpoint, args.username, args.password,
-                      timeout=args.wait_timeout)
+    _log("Step 5a: Waiting for mailaas element ACTIVE")
+    _wait_for_element(
+        "mailaas",
+        "ACTIVE",
+        args.endpoint,
+        args.username,
+        args.password,
+        timeout=args.wait_timeout,
+    )
 
     _log("Step 6: Reading metapaas IAM password")
     metapaas_password = _get_metapaas_iam_password(cp_ip)

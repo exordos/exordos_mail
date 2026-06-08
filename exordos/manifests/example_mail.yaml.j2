@@ -1,5 +1,5 @@
 name: "example_mail"
-description: "Example: a mail instance hosted by the metapaas control plane, created declaratively via the mail-aas element API"
+description: "Example: a mail instance hosted by the metapaas control plane, created declaratively via the mailaas element API"
 schema_version: 1
 version: "{{ version }}"
 api_version: "v1"
@@ -7,15 +7,15 @@ api_version: "v1"
 requirements:
   core:
     from_version: "0.0.0"
-  mail-aas:
+  mailaas:
     from_version: "0.0.0"
 
 resources:
 
   # A mail instance in the metapaas project. The metapaas db-back core-agent
-  # reconciles this into the metapaas DB (kind em_mail-aas_types_mail_instances);
+  # reconciles this into the metapaas DB (kind em_mailaas_types_mail_instances);
   # the mail plugin's infra builder then launches an exim4 dataplane node.
-  $mail-aas.types.mail.instances:
+  $mailaas.types.mail.instances:
     example_mail:
       name: "example-mail"
       project_id: "4d657461-0000-0000-0000-000000000002"
@@ -27,10 +27,10 @@ resources:
 
 imports:
   exim4_1:
-    element: "$mail-aas"
+    element: "$mailaas"
     kind: "resource"
-    link: "$mail-aas.types.mail.versions.$exim4_1"
+    link: "$mailaas.types.mail.versions.$exim4_1"
 
 exports:
   instance:
-    link: "$mail-aas.types.mail.instances.$example_mail"
+    link: "$mailaas.types.mail.instances.$example_mail"

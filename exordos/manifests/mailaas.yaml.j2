@@ -1,4 +1,4 @@
-name: "mail-aas"
+name: "mailaas"
 description: "Install the mail PaaS into the metapaas control plane: registers the Python package, IAM permissions and dataplane version. The metapaas element itself stays PaaS-agnostic."
 schema_version: 1
 version: "{{ version }}"
@@ -17,8 +17,8 @@ resources:
   $metapaas.types:
     mail:
       name: "mail"
-      element_name: "mail-aas"
-      package: "exordos_paas_mail"
+      element_name: "mailaas"
+      package: "exordos_mail"
       index_url: "{{ index_url | default('') }}"
       project_id: "4d657461-0000-0000-0000-000000000002"
 
@@ -90,7 +90,7 @@ resources:
 
   # Mail dataplane version catalog entry. `description` carries the metapaas
   # project id for the core-agent version filter.
-  $mail-aas.types.mail.versions:
+  $mailaas.types.mail.versions:
     exim4_1:
       name: "exim4_1"
       description: "4d657461-0000-0000-0000-000000000002"
@@ -98,4 +98,4 @@ resources:
 
 exports:
   exim4_1:
-    link: "$mail-aas.types.mail.versions.$exim4_1"
+    link: "$mailaas.types.mail.versions.$exim4_1"

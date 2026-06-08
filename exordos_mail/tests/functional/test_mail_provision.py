@@ -32,9 +32,7 @@ class TestInstanceLifecycle:
 
 
 class TestAccountCRUD:
-    def test_create_account(
-        self, mail_api_client, mail_instance_uuid, mail_project_id
-    ):
+    def test_create_account(self, mail_api_client, mail_instance_uuid, mail_project_id):
         username = f"user-{uuid.uuid4().hex[:8]}"
         # SHA512-CRYPT hash of "testpass"
         password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
