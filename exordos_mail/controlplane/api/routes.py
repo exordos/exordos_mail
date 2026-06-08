@@ -14,7 +14,7 @@
 
 from restalchemy.api import routes
 
-from exordos_paas_mail import controllers
+from exordos_mail.controlplane.api import controllers
 
 
 class MailAccountRoute(routes.Route):

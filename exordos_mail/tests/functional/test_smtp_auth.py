@@ -34,7 +34,7 @@ import uuid
 
 import pytest
 
-import exordos_paas_mail.tests.functional.conftest as mail_conftest
+import exordos_mail.tests.functional.conftest as mail_conftest
 
 
 # --- Helpers ------------------------------------------------------------------

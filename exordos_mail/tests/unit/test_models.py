@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from exordos_paas_mail import models
+from exordos_mail.controlplane.dm import models
 
 
 class TestMailVersion:

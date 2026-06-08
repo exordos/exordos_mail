@@ -22,7 +22,7 @@ from restalchemy.dm import models as ra_models
 from restalchemy.dm import properties
 from restalchemy.dm import types as ra_types
 
-from exordos_paas_mail import models
+from exordos_mail.controlplane.dm import models
 
 
 class MailInstanceNode(

@@ -91,11 +91,11 @@ resources:
   # Mail dataplane version catalog entry. `description` carries the metapaas
   # project id for the core-agent version filter.
   $mail-aas.types.mail.versions:
-    postfix_1:
-      name: "postfix_1"
+    exim4_1:
+      name: "exim4_1"
       description: "4d657461-0000-0000-0000-000000000002"
       image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/{{ name }}/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
 
 exports:
-  postfix_1:
-    link: "$mail-aas.types.mail.versions.$postfix_1"
+  exim4_1:
+    link: "$mail-aas.types.mail.versions.$exim4_1"

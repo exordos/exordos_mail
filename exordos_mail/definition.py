@@ -15,7 +15,7 @@
 import os
 
 from exordos_metapaas.registry import PaaSDefinition
-from exordos_paas_mail import routes
+from exordos_mail.controlplane.api import routes
 
 
 class MailDefinition(PaaSDefinition):
@@ -35,10 +35,10 @@ class MailDefinition(PaaSDefinition):
         return os.path.join(os.path.dirname(__file__), "migrations")
 
     def get_builders(self, core_username, core_password, core_api_base_url, project_id):
-        from exordos_paas_mail.infra_builder import CoreInfraBuilder
-        from exordos_paas_mail.infra_models import MailInstance as InfraMailInstance
-        from exordos_paas_mail.paas_builder import MailInstanceBuilder
-        from exordos_paas_mail.paas_models import MailInstance as PaaSMailInstance
+        from exordos_mail.controlplane.infra.services.builder import CoreInfraBuilder
+        from exordos_mail.controlplane.infra.dm.models import MailInstance as InfraMailInstance
+        from exordos_mail.controlplane.paas.services.builder import MailInstanceBuilder
+        from exordos_mail.controlplane.paas.dm.models import MailInstance as PaaSMailInstance
 
         return [
             CoreInfraBuilder(
@@ -53,9 +53,9 @@ class MailDefinition(PaaSDefinition):
 
     def get_agent_models(self):
         return {
-            "versions": "exordos_paas_mail.models:MailVersion",
-            "instances": "exordos_paas_mail.infra_models:MailInstance",
-            "instances.accounts": "exordos_paas_mail.models:MailAccount",
+            "versions": "exordos_mail.controlplane.dm.models:MailVersion",
+            "instances": "exordos_mail.controlplane.infra.dm.models:MailInstance",
+            "instances.accounts": "exordos_mail.controlplane.dm.models:MailAccount",
         }
 
     def get_agent_filters(self):

@@ -31,11 +31,6 @@ build:
         - .tox
         - output
 
-    - dst: /opt/gcl_sdk
-      optional: true
-      path:
-        env: LOCAL_GENESIS_SDK_PATH
-
   elements:
     # mail-aas install manifest: registers the mail PaaS type in metapaas,
     # IAM permissions and the mail-aas-namespaced dataplane version.

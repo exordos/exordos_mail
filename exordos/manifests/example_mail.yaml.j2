@@ -14,7 +14,7 @@ resources:
 
   # A mail instance in the metapaas project. The metapaas db-back core-agent
   # reconciles this into the metapaas DB (kind em_mail-aas_types_mail_instances);
-  # the mail plugin's infra builder then launches a Postfix+Dovecot dataplane node.
+  # the mail plugin's infra builder then launches an exim4 dataplane node.
   $mail-aas.types.mail.instances:
     example_mail:
       name: "example-mail"
@@ -23,13 +23,13 @@ resources:
       cpu: 1
       ram: 1024
       disk_size: 10
-      version: $example_mail.imports.$postfix_1:uuid
+      version: $example_mail.imports.$exim4_1:uuid
 
 imports:
-  postfix_1:
+  exim4_1:
     element: "$mail-aas"
     kind: "resource"
-    link: "$mail-aas.types.mail.versions.$postfix_1"
+    link: "$mail-aas.types.mail.versions.$exim4_1"
 
 exports:
   instance:

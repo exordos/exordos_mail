@@ -1,5 +1,5 @@
 [project]
-name = "exordos_paas_mail"
+name = "exordos_mail"
 description = "SMTP relay PaaS plugin for the Exordos MetaPaaS runtime (exim4)"
 readme = "README.md"
 authors = [{name = "Genesis Corporation", email = "mail@gmelikov.ru"}]
@@ -16,10 +16,10 @@ dependencies = [
 ]
 
 [project.entry-points."exordos_metapaas_paas"]
-mail = "exordos_paas_mail.definition:MailDefinition"
+mail = "exordos_mail.definition:MailDefinition"
 
 [project.entry-points."gcl_sdk_universal_agent"]
-MailCapabilityDriver = "exordos_paas_mail.driver:MailCapabilityDriver"
+MailCapabilityDriver = "exordos_mail.dataplane.driver:MailCapabilityDriver"
 
 [build-system]
 requires = ["setuptools>=75.3.3", "setuptools_scm>=8"]
@@ -65,9 +65,9 @@ fixable = ["ALL"]
 
 [tool.coverage.run]
 branch = true
-source = ["exordos_paas_mail"]
-command_line = "-m pytest -s exordos_paas_mail/tests/unit"
-omit = ["exordos_paas_mail/tests/*", ".venv"]
+source = ["exordos_mail"]
+command_line = "-m pytest -s exordos_mail/tests/unit"
+omit = ["exordos_mail/tests/*", ".venv"]
 
 [tool.coverage.report]
 exclude_also = [
@@ -85,7 +85,7 @@ directory = "cover"
 output = "cover/coverage.xml"
 
 [tool.mypy]
-files = ["exordos_paas_mail"]
+files = ["exordos_mail"]
 python_version = "3.12"
 disallow_untyped_defs = true
 show_error_codes = true
@@ -96,7 +96,7 @@ ignore_missing_imports = true
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["exordos_paas_mail*"]
+include = ["exordos_mail*"]
 
 [tool.setuptools.package-data]
-exordos_paas_mail = ["migrations/*.py"]
+exordos_mail = ["migrations/*.py"]

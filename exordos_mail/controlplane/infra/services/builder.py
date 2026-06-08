@@ -23,7 +23,7 @@ from gcl_sdk.infra.dm import models as sdk_models
 from gcl_sdk.infra.services import builder
 from restalchemy.dm import filters as dm_filters
 
-from exordos_paas_mail import infra_models as models
+from exordos_mail.controlplane.infra.dm import models
 
 LOG = logging.getLogger(__name__)
 NODE_KIND = sdk_models.Node.get_resource_kind()

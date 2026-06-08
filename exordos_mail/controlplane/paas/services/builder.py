@@ -19,7 +19,7 @@ import uuid as sys_uuid
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.paas.services import builder
 
-from exordos_paas_mail import paas_models as models
+from exordos_mail.controlplane.paas.dm import models
 
 LOG = logging.getLogger(__name__)
 AGENT_UUID5_NAME = "mail-aas"

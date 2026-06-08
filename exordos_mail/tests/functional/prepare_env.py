@@ -80,7 +80,7 @@ def _build_wheel(project_dir: str, output_dir: str) -> pathlib.Path:
     dist_dir.mkdir(parents=True, exist_ok=True)
     _run([sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
          cwd=project_dir)
-    wheels = list(dist_dir.glob("exordos_paas_mail-*.whl"))
+    wheels = list(dist_dir.glob("exordos_mail-*.whl"))
     if not wheels:
         raise FileNotFoundError(f"No wheel found in {dist_dir}")
     _log(f"Built wheel: {wheels[0].name}")
@@ -284,11 +284,11 @@ def main(argv=None):
             mail_vars["index_url"] = index_url
         _build(args.project_dir, str(mail_output), pub_key, mail_vars)
 
-        _log("Step 2c: Building Python wheel for exordos_paas_mail")
+        _log("Step 2c: Building Python wheel for exordos_mail")
         wheel_path = _build_wheel(args.project_dir, str(wheel_output))
     else:
         _log("Step 2: Skipping build (--skip-build)")
-        wheels = list((wheel_output / "dist").glob("exordos_paas_mail-*.whl"))
+        wheels = list((wheel_output / "dist").glob("exordos_mail-*.whl"))
         if not wheels:
             raise FileNotFoundError("No wheel found; run without --skip-build first")
         wheel_path = wheels[0]

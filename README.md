@@ -194,5 +194,5 @@ tox -e py312-functional
 ## References
 
 - MetaPaaS design: `../exordos_metapaas/DESIGN.md`
-- How to build new PaaS: `../metapaas_s3/HOW_TO_BUILD_NEW_PAAS.md`
-- Working reference: `../metapaas_s3/`
+- How to build new PaaS: `../exordos_s3/HOW_TO_BUILD_NEW_PAAS.md`
+- Working reference: `../exordos_s3/`

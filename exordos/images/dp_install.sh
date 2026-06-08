@@ -27,8 +27,6 @@ BOOTSTRAP_PATH="/var/lib/exordos/bootstrap/scripts"
 
 SYSTEMD_SERVICE_DIR=/etc/systemd/system/
 
-DEV_SDK_PATH="/opt/gcl_sdk"
-SDK_DEV_MODE=$([ -d "$DEV_SDK_PATH" ] && echo "true" || echo "false")
 
 # Install mail packages — exim4 only (SMTP relay, like genesis_sender; no IMAP)
 sudo apt update
@@ -168,11 +166,6 @@ cd "$GC_PATH"
 uv build --wheel --out-dir /tmp/mail-wheels/ /opt/exordos_metapaas_runtime
 uv sync --find-links /tmp/mail-wheels/
 source "$VENV_PATH/bin/activate"
-
-if [[ "$SDK_DEV_MODE" == "true" ]]; then
-    uv pip uninstall -y gcl_sdk
-    uv pip install -e "$DEV_SDK_PATH"
-fi
 
 sudo ln -sf "$VENV_PATH/bin/exordos-universal-agent" "/usr/bin/exordos-universal-agent"
 

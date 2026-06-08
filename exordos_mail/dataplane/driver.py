@@ -23,7 +23,7 @@ from gcl_sdk.infra import constants as pc
 from restalchemy.dm import properties
 from restalchemy.dm import types as ra_types
 
-from exordos_paas_mail import constants
+from exordos_mail import constants
 
 LOG = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import exordos_paas_mail.driver as drv_module
+import exordos_mail.dataplane.driver as drv_module
 
 
 class _Stub:

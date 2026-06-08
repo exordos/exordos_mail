@@ -22,7 +22,7 @@ from restalchemy.dm import types
 from restalchemy.storage.sql import orm
 from gcl_sdk.agents.universal.dm import models as ua_models
 
-from exordos_paas_mail import utils as u
+from exordos_mail import utils as u
 
 
 class MailStatus(str, enum.Enum):

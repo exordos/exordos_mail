@@ -121,7 +121,7 @@ jobs:
           tox -e develop
 
           .tox/develop/bin/python \
-            exordos_paas_mail/tests/functional/prepare_env.py \
+            exordos_mail/tests/functional/prepare_env.py \
             --metapaas-dir ../exordos_metapaas \
             --project-dir . \
             --output-dir /tmp/metapaas-mail-build \

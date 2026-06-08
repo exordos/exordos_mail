@@ -18,7 +18,7 @@ from restalchemy.api import controllers as ra_controllers
 from restalchemy.api import field_permissions as field_p
 from restalchemy.api import resources as ra_resources
 
-from exordos_paas_mail import models
+from exordos_mail.controlplane.dm import models
 
 
 class MailController(ra_controllers.RoutesListController):
