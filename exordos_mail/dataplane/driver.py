@@ -158,11 +158,13 @@ class MailInstance(meta.MetaDataPlaneModel):
     def restore_from_dp(self) -> None:
         actual = self._read_exim4_passwd()
         self.accounts = {}
-        for full_addr in actual:
+        for full_addr, line in actual.items():
             if "@" in full_addr:
                 local = full_addr.split("@")[0]
+                parts = line.split(":", 1)
+                password_hash = parts[1] if len(parts) >= 2 else ""
                 self.accounts[local] = {
-                    "password_hash": "",
+                    "password_hash": password_hash,
                     "active": True,
                 }
         self.dkim_public_key = self._read_dkim_public_key()

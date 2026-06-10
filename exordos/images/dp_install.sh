@@ -162,9 +162,7 @@ sudo chmod +x /usr/local/bin/exordos-mail-configure
 
 # Install Python venv
 cd "$GC_PATH"
-# exordos_metapaas is not on PyPI; build its wheel and pass via --find-links
-uv build --wheel --out-dir /tmp/mail-wheels/ /opt/exordos_metapaas_runtime
-uv sync --find-links /tmp/mail-wheels/
+uv sync
 source "$VENV_PATH/bin/activate"
 
 sudo ln -sf "$VENV_PATH/bin/exordos-universal-agent" "/usr/bin/exordos-universal-agent"

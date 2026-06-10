@@ -63,35 +63,63 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
     def create_infra(
         self, instance: models.MailInstance
     ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
-        return instance.get_infra(self._project_id)
+        return self.actualize_infra(instance, builder.InfraCollection(infra_objects=()))
 
     def actualize_infra(
         self,
         instance: models.MailInstance,
         infra: builder.InfraCollection,
     ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
-        nodeset = None
-        configs = []
+        nodeset_target = None
+        nodeset_actual = None
 
         for target, actual in infra.infra_objects:
             if target.get_resource_kind() == NODE_SET_KIND:
-                nodeset = actual
-            elif actual is not None and actual.get_resource_kind() == CONFIG_KIND:
-                configs.append(actual)
+                nodeset_target = target
+                nodeset_actual = actual
 
-        if nodeset is None:
-            return tuple()
+        # Bootstrap: no NodeSet target yet — create it from instance spec
+        if nodeset_target is None:
+            for obj in instance.get_infra(self._project_id):
+                if obj.get_resource_kind() == NODE_SET_KIND:
+                    nodeset_target = obj
+                    break
+            instance.status = sdk_c.InstanceStatus.IN_PROGRESS.value
+            return (nodeset_target,) if nodeset_target is not None else ()
 
-        if nodeset.nodes:
+        # Keep NodeSet target in sync with current instance spec
+        nodeset_target.cores = instance.cpu
+        nodeset_target.ram = instance.ram
+        nodeset_target.disk_spec = sdk_models.SetDisksSpec(
+            disks=[
+                {
+                    "size": models.ROOT_DISK_SIZE,
+                    "image": instance.version.image,
+                    "label": "root",
+                },
+                {
+                    "size": instance.disk_size,
+                    "label": "data",
+                },
+            ]
+        )
+        nodeset_target.replicas = 1
+
+        # Actual NodeSet not yet provisioned
+        if nodeset_actual is None:
+            instance.status = sdk_c.InstanceStatus.IN_PROGRESS.value
+            return (nodeset_target,)
+
+        if nodeset_actual.nodes:
             instance.ipsv4 = [
-                node["ipv4"] for node in nodeset.nodes.values() if node.get("ipv4")
+                node["ipv4"]
+                for node in nodeset_actual.nodes.values()
+                if node.get("ipv4")
             ]
 
-        new_objects = []
-
-        # Retrieve private keys for nodes
+        # Sync private keys for DP nodes into local DB
         node_keys = self._cclient.do_action(
-            "/v1/compute/sets/", "get_private_keys", nodeset.uuid
+            "/v1/compute/sets/", "get_private_keys", nodeset_actual.uuid
         )
         for u, v in node_keys.items():
             if nkey := ua_models.NodeEncryptionKey.objects.get_one_or_none(
@@ -103,51 +131,21 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
                 nkey = ua_models.NodeEncryptionKey(uuid=sys_uuid.UUID(u), private_key=v)
                 nkey.insert()
 
-        # Mail is single-node; generate config for the one node
-        for node_uuid_str, node in nodeset.nodes.items():
-            content = MAIL_CONF_TEMPLATE.format(
-                domain=instance.domain,
-            )
+        # Mail is single-node; generate config for each provisioned node
+        new_configs = []
+        for node_uuid_str, _ in nodeset_actual.nodes.items():
+            content = MAIL_CONF_TEMPLATE.format(domain=instance.domain)
             config = instance._create_config(
                 sys_uuid.UUID(node_uuid_str), self._project_id, content
             )
-            new_objects.append(config)
-
-        tgt_nodeset = None
-
-        for target, _ in infra.infra_objects:
-            if target.get_resource_kind() == CONFIG_KIND:
-                continue
-            elif target.get_resource_kind() == NODE_SET_KIND:
-                target.cores = instance.cpu
-                target.ram = instance.ram
-                target.disk_spec = sdk_models.SetDisksSpec(
-                    disks=[
-                        {
-                            "size": models.ROOT_DISK_SIZE,
-                            "image": instance.version.image,
-                            "label": "root",
-                        },
-                        {
-                            "size": instance.disk_size,
-                            "label": "data",
-                        },
-                    ]
-                )
-                target.replicas = 1
-                tgt_nodeset = target
-            else:
-                LOG.warning(
-                    "%s kind is not supported here, ignoring...",
-                    target.get_resource_kind(),
-                )
+            new_configs.append(config)
 
         try:
-            instance.status = sdk_c.InstanceStatus(nodeset.status).value
+            instance.status = sdk_c.InstanceStatus(nodeset_actual.status).value
         except ValueError:
             instance.status = sdk_c.InstanceStatus.IN_PROGRESS.value
 
-        return (tgt_nodeset, *new_objects)
+        return (nodeset_target, *new_configs)
 
     def pre_delete_instance_resource(self, resource):
         target_resources = ua_models.TargetResource.objects.get_all(

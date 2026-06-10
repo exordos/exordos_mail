@@ -3,20 +3,20 @@
 
 Steps:
   1. Generate SSH key pair.
-  2. Build exordos_metapaas CP image (from --metapaas-dir).
-  3. Build metapaas_mail DP image + wheel (from --project-dir).
-  4. Serve both via a local HTTP server.
-  5. Install metapaas element; wait for CP node ACTIVE.
-  6. Install mailaas element; wait for PluginReconciler to activate mail plugin.
-  7. Print env vars needed by the functional test suite.
+  2. Build metapaas_mail DP image + wheel (from --project-dir).
+     Optionally build exordos_metapaas CP image (from --metapaas-dir).
+  3. Serve mail artifacts via a local HTTP server.
+  4. Install metapaas element (from official repo, or local if --metapaas-dir given);
+     wait for CP node ACTIVE.
+  5. Install mailaas element; wait for PluginReconciler to activate mail plugin.
+  6. Print env vars needed by the functional test suite.
 
 Usage::
 
     python prepare_env.py \\
-        --metapaas-dir ../exordos_metapaas \\
         --project-dir . \\
         --output-dir /tmp/metapaas-mail-build \\
-        --endpoint http://10.20.0.2:11010 \\
+        --endpoint http://10.20.0.2/api/core \\
         --username admin --password <pass>
 """
 
@@ -27,7 +27,6 @@ import json
 import os
 import pathlib
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -137,7 +136,7 @@ def _start_http_server(serve_dir: str, port: int) -> subprocess.Popen:
 
 def _publish_to_serve_dir(
     serve_root: pathlib.Path,
-    metapaas_output: pathlib.Path,
+    metapaas_output: pathlib.Path | None,
     mail_output: pathlib.Path,
     wheel_path: pathlib.Path,
 ) -> None:
@@ -150,15 +149,16 @@ def _publish_to_serve_dir(
             return data.get("version", "0.0.1")
         return "0.0.1"
 
-    # metapaas CP image
-    mp_ver = _read_version(metapaas_output)
-    mp_img_dir = serve_root / "metapaas" / mp_ver / "images"
-    mp_img_dir.mkdir(parents=True, exist_ok=True)
-    for img in (metapaas_output / "images").glob("*.zst"):
-        dst = mp_img_dir / img.name
-        if not dst.exists():
-            shutil.copy2(img, dst)
-        _log(f"  metapaas image: metapaas/{mp_ver}/images/{img.name}")
+    if metapaas_output is not None:
+        # metapaas CP image (only when built locally)
+        mp_ver = _read_version(metapaas_output)
+        mp_img_dir = serve_root / "metapaas" / mp_ver / "images"
+        mp_img_dir.mkdir(parents=True, exist_ok=True)
+        for img in (metapaas_output / "images").glob("*.zst"):
+            dst = mp_img_dir / img.name
+            if not dst.exists():
+                shutil.copy2(img, dst)
+            _log(f"  metapaas image: metapaas/{mp_ver}/images/{img.name}")
 
     # mailaas DP image + manifest
     mail_ver = _read_version(mail_output)
@@ -184,24 +184,14 @@ def _publish_to_serve_dir(
 
 
 def _ee_install(name, version, repository, endpoint, username, password):
-    _run(
-        [
-            "exordos",
-            "-e",
-            endpoint,
-            "-u",
-            username,
-            "-p",
-            password,
-            "ee",
-            "install",
-            name,
-            "--version",
-            version,
-            "--repository",
-            repository,
-        ]
-    )
+    cmd = [
+        "exordos", "-e", endpoint, "-u", username, "-p", password,
+        "ee", "install", name,
+        "--version", version,
+    ]
+    if repository is not None:
+        cmd += ["--repository", repository]
+    _run(cmd)
 
 
 def _wait_for_element(name, target, endpoint, username, password, timeout=300):
@@ -276,7 +266,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--metapaas-dir", required=True)
+    p.add_argument("--metapaas-dir", default=None,
+                   help="Path to exordos_metapaas source. If omitted, installs metapaas from the official repo.")
     p.add_argument("--project-dir", default=".")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--key-dir", default=None)
@@ -285,7 +276,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--http-port", type=int, default=8000)
     p.add_argument("--http-host", default=None)
     p.add_argument("--no-http-server", action="store_true")
-    p.add_argument("--metapaas-version", default="0.0.1")
+    p.add_argument("--metapaas-version", default="latest")
     p.add_argument("--mail-version", default="0.0.1")
     p.add_argument("--skip-install", action="store_true")
     p.add_argument(
@@ -308,7 +299,6 @@ def main(argv=None):
         else pathlib.Path(tempfile.gettempdir()) / "exordos-test-keys"
     )
 
-    http_proc = None
     repository_url = None
     index_url = None
 
@@ -328,11 +318,14 @@ def main(argv=None):
     pub_key = args.developer_key_path or pub_key
 
     if not args.skip_build:
-        _log("Step 2a: Building exordos_metapaas")
-        mp_vars = {}
-        if repository_url:
-            mp_vars["repository"] = repository_url
-        _build(args.metapaas_dir, str(metapaas_output), pub_key, mp_vars)
+        if args.metapaas_dir is not None:
+            _log("Step 2a: Building exordos_metapaas")
+            mp_vars = {}
+            if repository_url:
+                mp_vars["repository"] = repository_url
+            _build(args.metapaas_dir, str(metapaas_output), pub_key, mp_vars)
+        else:
+            _log("Step 2a: Skipping exordos_metapaas build (will install from official repo)")
 
         _log("Step 2b: Building metapaas_mail (DP image + manifests)")
         mail_vars = {}
@@ -353,10 +346,15 @@ def main(argv=None):
 
     _log("Step 3: Publishing artifacts")
     serve_root.mkdir(parents=True, exist_ok=True)
-    _publish_to_serve_dir(serve_root, metapaas_output, mail_output, wheel_path)
+    _publish_to_serve_dir(
+        serve_root,
+        metapaas_output if args.metapaas_dir is not None else None,
+        mail_output,
+        wheel_path,
+    )
 
     if not args.no_http_server:
-        http_proc = _start_http_server(str(serve_root), port)
+        _ = _start_http_server(str(serve_root), port)
 
     if args.skip_install:
         _log("Steps 4-6: Skipping install (--skip-install)")
@@ -366,7 +364,7 @@ def main(argv=None):
     _ee_install(
         "metapaas",
         args.metapaas_version,
-        repository_url,
+        repository_url if args.metapaas_dir is not None else None,
         args.endpoint,
         args.username,
         args.password,
@@ -413,7 +411,7 @@ def main(argv=None):
     _log(f"  export METAPAAS_USERNAME={METAPAAS_IAM_USER}")
     _log(f"  export METAPAAS_PASSWORD={metapaas_password}")
     _log(f"  export EXORDOS_MAIL_CP_URL=http://{cp_ip}:8080")
-    _log(f"  export EXORDOS_POLL_TIMEOUT=600")
+    _log("  export EXORDOS_POLL_TIMEOUT=600")
     _log("")
     _log("Then run:  tox -e py312-functional")
     _log("=" * 60)

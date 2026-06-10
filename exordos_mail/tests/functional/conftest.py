@@ -16,15 +16,12 @@ from __future__ import annotations
 
 import os
 import time
-import typing as tp
 import uuid as sys_uuid
 
 import pytest
+from exordos.clients import base_client
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.clients.http import base as http_client
-
-from exordos.clients import base_client
-
 
 EXORDOS_ENDPOINT = os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2:11010")
 EXORDOS_USERNAME = os.environ.get("EXORDOS_USERNAME", "admin")

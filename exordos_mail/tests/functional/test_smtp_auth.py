@@ -36,7 +36,6 @@ import pytest
 
 import exordos_mail.tests.functional.conftest as mail_conftest
 
-
 # --- Helpers ------------------------------------------------------------------
 
 _TLS_CTX = ssl.create_default_context()

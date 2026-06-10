@@ -22,15 +22,6 @@ build:
         - .tox
         - output
 
-    # exordos_metapaas runtime: not on PyPI, installed from local path before uv sync
-    - dst: /opt/exordos_metapaas_runtime
-      path:
-        src: ../../exordos_metapaas
-      exclude:
-        - .venv
-        - .tox
-        - output
-
   elements:
     # mailaas install manifest: registers the mail PaaS type in metapaas,
     # IAM permissions and the mailaas-namespaced dataplane version.

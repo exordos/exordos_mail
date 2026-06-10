@@ -1,5 +1,5 @@
 name: "mailaas"
-description: "Install the mail PaaS into the metapaas control plane: registers the Python package, IAM permissions and dataplane version. The metapaas element itself stays PaaS-agnostic."
+description: "Mail server as a service"
 schema_version: 1
 version: "{{ version }}"
 api_version: "v1"
@@ -19,6 +19,7 @@ resources:
       name: "mail"
       element_name: "mailaas"
       package: "exordos_mail"
+      version: "{{ pkg_version | default('') }}"
       index_url: "{{ index_url | default('') }}"
       project_id: "4d657461-0000-0000-0000-000000000002"
 
@@ -93,8 +94,8 @@ resources:
   $mailaas.types.mail.versions:
     exim4_1:
       name: "exim4_1"
-      description: "4d657461-0000-0000-0000-000000000002"
-      image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/{{ name }}/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
+      description: "12345678-c625-4fee-81d5-f691897b8142"
+      image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/mailaas/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
 
 exports:
   exim4_1:

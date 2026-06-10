@@ -2,6 +2,7 @@ SHELL := bash
 SSH_KEY    ?= ~/.ssh/id_ed25519.pub
 REPOSITORY ?= http://10.20.0.1:8080/exordos-elements
 INDEX_URL  ?= http://10.20.0.1:8080/simple/
+PKG_VERSION ?=
 
 all: help
 
@@ -19,7 +20,8 @@ help:
 build:
 	exordos build -c exordos/exordos.yaml -i $(SSH_KEY) -f \
 		--manifest-var repository=$(REPOSITORY) \
-		--manifest-var index_url=$(INDEX_URL)
+		--manifest-var index_url=$(INDEX_URL) \
+		$(if $(PKG_VERSION),--manifest-var pkg_version=$(PKG_VERSION),)
 
 install:
 	exordos em elements install output/manifests/mailaas.yaml

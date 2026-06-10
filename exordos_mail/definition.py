@@ -15,6 +15,7 @@
 import os
 
 from exordos_metapaas.registry import PaaSDefinition
+
 from exordos_mail.controlplane.api import routes
 
 
@@ -35,14 +36,14 @@ class MailDefinition(PaaSDefinition):
         return os.path.join(os.path.dirname(__file__), "migrations")
 
     def get_builders(self, core_username, core_password, core_api_base_url, project_id):
-        from exordos_mail.controlplane.infra.services.builder import CoreInfraBuilder
         from exordos_mail.controlplane.infra.dm.models import (
             MailInstance as InfraMailInstance,
         )
-        from exordos_mail.controlplane.paas.services.builder import MailInstanceBuilder
+        from exordos_mail.controlplane.infra.services.builder import CoreInfraBuilder
         from exordos_mail.controlplane.paas.dm.models import (
             MailInstance as PaaSMailInstance,
         )
+        from exordos_mail.controlplane.paas.services.builder import MailInstanceBuilder
 
         return [
             CoreInfraBuilder(

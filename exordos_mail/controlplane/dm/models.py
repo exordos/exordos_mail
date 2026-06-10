@@ -14,15 +14,11 @@
 
 import enum
 
-from passlib.hash import sha512_crypt as _sha512_crypt
-
-from restalchemy.dm import filters as dm_filters
-from restalchemy.dm import models
-from restalchemy.dm import properties
-from restalchemy.dm import relationships
-from restalchemy.dm import types
-from restalchemy.storage.sql import orm
 from gcl_sdk.agents.universal.dm import models as ua_models
+from passlib.hash import sha512_crypt as _sha512_crypt
+from restalchemy.dm import filters as dm_filters
+from restalchemy.dm import models, properties, relationships, types
+from restalchemy.storage.sql import orm
 
 from exordos_mail import utils as u
 
@@ -125,7 +121,19 @@ class MailAccount(
 
     def _maybe_hash_password(self):
         if self.password_hash and not _is_crypt_hash(self.password_hash):
-            self.password_hash = _sha512_crypt.hash(self.password_hash)
+            # If the plaintext matches the already-stored crypt hash (e.g. the
+            # core-agent re-applies the same plaintext target every cycle), keep
+            # the existing hash to avoid generating a new random salt on every
+            # update and triggering a needless DP re-provision.
+            old_hash = self.properties["password_hash"].old_value
+            if (
+                old_hash
+                and _is_crypt_hash(old_hash)
+                and _sha512_crypt.verify(self.password_hash, old_hash)
+            ):
+                self.password_hash = old_hash
+            else:
+                self.password_hash = _sha512_crypt.hash(self.password_hash)
 
     def insert(self, session=None):
         self._maybe_hash_password()
