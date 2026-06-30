@@ -23,7 +23,7 @@ from exordos.clients import base_client
 from gcl_iam.tests.functional import clients as iam_clients
 from gcl_sdk.clients.http import base as http_client
 
-EXORDOS_ENDPOINT = os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2:11010")
+EXORDOS_ENDPOINT = os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2/api/core")
 EXORDOS_USERNAME = os.environ.get("EXORDOS_USERNAME", "admin")
 EXORDOS_PASSWORD = os.environ.get("EXORDOS_PASSWORD", "")
 

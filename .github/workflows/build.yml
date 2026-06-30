@@ -11,7 +11,7 @@ env:
   CORE_ENDPOINT_URL: http://10.20.0.2:80/api/core
   CORE_USERNAME: "admin"
   CORE_PASSWORD: "admin"
-  ELEMENT_NAME: mailaas
+  NGINX_URL: "http://10.20.0.1:8081"
 
 jobs:
   Build:
@@ -46,21 +46,14 @@ jobs:
           uv tool install tox --with tox-uv
           pip install build
 
-      - name: Build and push exordos_mail
+      - name: Build exordos_mail
         timeout-minutes: 20
-        env:
-          PUSH_EXORDOS_CFG: ${{ secrets.PUSH_EXORDOS_CFG }}
         run: |
           set -eux
-
-          VERSION="$(exordos get-version .)"
-
-          exordos build $(pwd)
-
-          echo "$PUSH_EXORDOS_CFG" | base64 -d > exordos/exordos.push.yaml
-          exordos push -c exordos/exordos.push.yaml -t exordos_repo -f --latest
-
+          exordos build --output-dir /tmp/mailaas-build $(pwd)
+          VERSION="$(jq -r '.version' /tmp/mailaas-build/exordos-elements/mailaas/*/inventory.json | head -1)"
           echo "MAILAAS_VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "MAILAAS_BUILD_DIR=/tmp/mailaas-build" >> $GITHUB_ENV
 
       - name: Configure exordos settings
         run: |
@@ -83,20 +76,51 @@ jobs:
 
       - name: Set hypervisor with overbooking
         run: |
-          HYPER_UUID="$(exordos c h l -o json | jq -r .[0]."UUID")"
+          HYPER_UUID="$(exordos c h l -o json | jq -r .[0]."uuid")"
           exordos compute hypervisors update $HYPER_UUID --cores-ratio 10.0 --ram-ratio 10.0
 
-      - name: Build + serve + install (prepare_env.py)
-        run: |
-          tox -e develop
+      - name: Install requirements
+        run: sudo apt update && sudo apt install --yes libev-dev nginx
 
-          .tox/develop/bin/python \
-            exordos_mail/tests/functional/prepare_env.py \
-            --project-dir . \
+      - name: Setup nginx
+        run: |
+          sudo tee /etc/nginx/sites-available/mailaas-ci > /dev/null <<'EOF'
+          server {
+              listen 8081;
+              root /srv/nginx;
+              autoindex on;
+          }
+          EOF
+          sudo ln -sf /etc/nginx/sites-available/mailaas-ci /etc/nginx/sites-enabled/mailaas-ci
+          sudo rm -f /etc/nginx/sites-enabled/default
+          sudo mkdir -p /srv/nginx
+          sudo chown -R "$USER:$USER" /srv/nginx
+          sudo systemctl enable --now nginx
+
+      - name: Populate nginx + build wheel
+        run: |
+          cp -r "$MAILAAS_BUILD_DIR/." /srv/nginx/
+          mkdir -p /srv/nginx/simple
+          python -m build --wheel --outdir /srv/nginx/simple/
+
+      - name: Patch manifest for CI
+        run: |
+          MF=/srv/nginx/exordos-elements/mailaas/$MAILAAS_VERSION/manifests/mailaas.yaml
+          sed -i 's|index_url: ""|index_url: "'"$NGINX_URL"'/simple/"|' "$MF"
+          sed -i 's|image: "https://repo.exordos.com/exordos-elements/|image: "'"$NGINX_URL"'/exordos-elements/|' "$MF"
+          grep -E 'index_url|image:' "$MF"
+
+      - name: Install elements + wait
+        run: |
+          python exordos_mail/tests/functional/prepare_env.py \
+            --skip-build \
+            --no-http-server \
+            --repository "$NGINX_URL/exordos-elements" \
+            --mail-version "$MAILAAS_VERSION" \
             --output-dir /tmp/metapaas-mail-build \
             --endpoint $CORE_ENDPOINT_URL \
             --username $CORE_USERNAME \
-            --password "${CORE_PASSWORD}" \
+            --password "$CORE_PASSWORD" \
             --wait-timeout 600 \
             2>&1 | tee /tmp/prepare_env.log
 
@@ -104,18 +128,24 @@ jobs:
 
       - name: Wait for Mail API
         run: |
-          CP_URL=$(grep "EXORDOS_MAIL_CP_URL" $GITHUB_ENV | cut -d= -f2)
           for i in {1..30}; do
-            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${CP_URL}/v1/")
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" "${EXORDOS_MAIL_CP_URL}/v1/" || true)
             if echo "$CODE" | grep -qE "200|404"; then
               echo "MetaPaaS user-api ready (HTTP $CODE)"; exit 0
             fi
-            echo "Waiting ($i/30) for user-api…"; sleep 10
+            echo "Waiting ($i/30) for user-api… (got '$CODE')"; sleep 10
           done
           exit 1
 
       - name: Run functional tests
         run: tox -e ${{ env.PYTHON_VERSION }}-functional
+
+      - name: Push exordos_mail
+        env:
+          PUSH_EXORDOS_CFG: ${{ secrets.PUSH_EXORDOS_CFG }}
+        run: |
+          echo "$PUSH_EXORDOS_CFG" | base64 -d > exordos/exordos.push.yaml
+          exordos push -c exordos/exordos.push.yaml -e $MAILAAS_BUILD_DIR -t exordos_repo -f --latest
 
       - name: Debug session on failure
         uses: owenthereal/action-upterm@v1

@@ -26,16 +26,27 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import tempfile
 import time
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 LOCAL_REPO_PATH = "/srv/exordos-local-repo/exordos-elements"
 METAPAAS_PROJECT_ID = "4d657461-0000-0000-0000-000000000002"
 METAPAAS_IAM_USER = "metapaas"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _log(msg: str) -> None:
@@ -78,6 +89,7 @@ def _generate_ssh_key(key_dir: pathlib.Path) -> tuple[str, str]:
             "exordos-test",
         ]
     )
+    _log(f"Generated SSH key pair in {key_dir}")
     return str(priv), str(pub)
 
 
@@ -100,6 +112,7 @@ def _build(
 
 
 def _build_wheel(project_dir: str, output_dir: str) -> pathlib.Path:
+    """Build Python wheel for exordos_mail."""
     dist_dir = pathlib.Path(output_dir) / "dist"
     dist_dir.mkdir(parents=True, exist_ok=True)
     _run(
@@ -134,12 +147,27 @@ def _start_http_server(serve_dir: str, port: int) -> subprocess.Popen:
     return proc
 
 
+def _stop_http_server(proc: subprocess.Popen) -> None:
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+
 def _publish_to_serve_dir(
     serve_root: pathlib.Path,
     metapaas_output: pathlib.Path | None,
     mail_output: pathlib.Path,
     wheel_path: pathlib.Path,
 ) -> None:
+    """Arrange build artifacts into the directory structure the manifests expect.
+
+    metapaas CP image:  serve_root/metapaas/<version>/images/... (optional)
+    mailaas DP image:   serve_root/mailaas/<version>/images/exordos-metapaas-mail-dp.raw.zst
+    mailaas manifest:   serve_root/mailaas/<version>/mailaas.yaml
+    pip wheel:          serve_root/simple/exordos_mail-*.whl
+    """
+
     def _read_version(output_dir: pathlib.Path) -> str:
         inv = output_dir / "inventory.json"
         if inv.exists():
@@ -150,7 +178,6 @@ def _publish_to_serve_dir(
         return "0.0.1"
 
     if metapaas_output is not None:
-        # metapaas CP image (only when built locally)
         mp_ver = _read_version(metapaas_output)
         mp_img_dir = serve_root / "metapaas" / mp_ver / "images"
         mp_img_dir.mkdir(parents=True, exist_ok=True)
@@ -160,7 +187,6 @@ def _publish_to_serve_dir(
                 shutil.copy2(img, dst)
             _log(f"  metapaas image: metapaas/{mp_ver}/images/{img.name}")
 
-    # mailaas DP image + manifest
     mail_ver = _read_version(mail_output)
     mail_img_dir = serve_root / "mailaas" / mail_ver / "images"
     mail_img_dir.mkdir(parents=True, exist_ok=True)
@@ -174,7 +200,6 @@ def _publish_to_serve_dir(
         shutil.copy2(mf, dst)
         _log(f"  mailaas manifest: mailaas/{mail_ver}/{mf.name}")
 
-    # pip wheel
     pip_dir = serve_root / "simple"
     pip_dir.mkdir(parents=True, exist_ok=True)
     dst = pip_dir / wheel_path.name
@@ -183,18 +208,41 @@ def _publish_to_serve_dir(
     _log(f"  pip wheel: simple/{wheel_path.name}")
 
 
-def _ee_install(name, version, repository, endpoint, username, password):
+def _ee_install(
+    name: str,
+    version: str,
+    repository: str | None,
+    endpoint: str,
+    username: str,
+    password: str,
+) -> None:
     cmd = [
-        "exordos", "-e", endpoint, "-u", username, "-p", password,
-        "ee", "install", name,
-        "--version", version,
+        "exordos",
+        "-e",
+        endpoint,
+        "-u",
+        username,
+        "-p",
+        password,
+        "ee",
+        "install",
+        name,
+        "--version",
+        version,
     ]
     if repository is not None:
         cmd += ["--repository", repository]
     _run(cmd)
 
 
-def _wait_for_element(name, target, endpoint, username, password, timeout=300):
+def _wait_for_element(
+    name: str,
+    target: str,
+    endpoint: str,
+    username: str,
+    password: str,
+    timeout: int = 300,
+) -> None:
     _log(f"Waiting for element '{name}' to reach {target}…")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -214,29 +262,42 @@ def _wait_for_element(name, target, endpoint, username, password, timeout=300):
     raise TimeoutError(f"Element '{name}' did not reach {target} within {timeout}s")
 
 
-def _wait_for_node(name_pattern, endpoint, username, password, timeout=300):
+def _wait_for_node(
+    name_pattern: str, endpoint: str, username: str, password: str, timeout: int = 300
+) -> str:
+    """Wait for a compute node matching name_pattern to be ACTIVE; return its IP."""
     _log(f"Waiting for node matching '{name_pattern}' to be ACTIVE…")
     deadline = time.monotonic() + timeout
+    last_raw = ""
     while time.monotonic() < deadline:
         result = subprocess.run(
-            ["exordos", "-e", endpoint, "-u", username, "-p", password, "cn", "list"],
+            ["exordos", "-e", endpoint, "-u", username, "-p", password, "cn", "list", "-o", "json"],
             capture_output=True,
             text=True,
         )
-        for line in result.stdout.splitlines():
-            if name_pattern in line and "ACTIVE" in line:
-                import re
-
-                m = re.search(r"\b(10\.\d+\.\d+\.\d+)\b", line)
-                if m:
-                    ip = m.group(1)
-                    _log(f"Node '{name_pattern}' ACTIVE at {ip}")
-                    return ip
+        last_raw = result.stdout
+        try:
+            nodes = json.loads(result.stdout)
+        except Exception:
+            time.sleep(15)
+            continue
+        for node in nodes if isinstance(nodes, list) else []:
+            name = str(node.get("name", ""))
+            status = str(node.get("status", ""))
+            if name_pattern in name and status == "ACTIVE":
+                for val in node.values():
+                    m = re.search(r"\b(10\.\d+\.\d+\.\d+)\b", str(val))
+                    if m:
+                        ip = m.group(1)
+                        _log(f"Node '{name}' ACTIVE at {ip}")
+                        return ip
         time.sleep(15)
+    _log(f"Last cn list output:\n{last_raw}")
     raise TimeoutError(f"No ACTIVE node matching '{name_pattern}' within {timeout}s")
 
 
-def _get_metapaas_iam_password(cp_ip):
+def _get_metapaas_iam_password(cp_ip: str) -> str:
+    """Read IAM_USER_PASS from /etc/exordos_init.txt on the metapaas CP."""
     try:
         result = subprocess.run(
             [
@@ -257,7 +318,60 @@ def _get_metapaas_iam_password(cp_ip):
             return pw
     except Exception as e:
         _log(f"WARNING: Could not read IAM password via SSH: {e}")
-    return METAPAAS_IAM_USER
+
+    # Fallback: read via virsh guest-exec (if running on the hypervisor host)
+    try:
+        virsh_result = subprocess.run(
+            ["sudo", "virsh", "list", "--all"],
+            capture_output=True,
+            text=True,
+        )
+        for line in virsh_result.stdout.splitlines():
+            if "metapaas-cp" in line:
+                vm_name = line.split()[1]
+                script = "cat /etc/exordos_init.txt | grep IAM_USER_PASS | cut -d= -f2"
+                enc = subprocess.run(
+                    ["base64", "-w0"], input=script.encode(), capture_output=True
+                ).stdout.decode()
+                pid_result = subprocess.run(
+                    [
+                        "sudo",
+                        "virsh",
+                        "qemu-agent-command",
+                        vm_name,
+                        f'{{"execute":"guest-exec","arguments":{{"path":"/bin/bash","arg":["-c","echo {enc} | base64 -d | bash"],"capture-output":true}}}}',
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                pid = json.loads(pid_result.stdout)["return"]["pid"]
+                time.sleep(2)
+                status = subprocess.run(
+                    [
+                        "sudo",
+                        "virsh",
+                        "qemu-agent-command",
+                        vm_name,
+                        f'{{"execute":"guest-exec-status","arguments":{{"pid":{pid}}}}}',
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                import base64
+
+                out = json.loads(status.stdout)["return"]
+                pw = base64.b64decode(out.get("out-data", "")).decode().strip()
+                if pw:
+                    return pw
+    except Exception as e:
+        _log(f"WARNING: Could not read IAM password via virsh: {e}")
+
+    return METAPAAS_IAM_USER  # fallback to default
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -266,31 +380,84 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--metapaas-dir", default=None,
-                   help="Path to exordos_metapaas source. If omitted, installs metapaas from the official repo.")
-    p.add_argument("--project-dir", default=".")
-    p.add_argument("--output-dir", required=True)
-    p.add_argument("--key-dir", default=None)
-    p.add_argument("-i", "--developer-key-path", default=None)
-    p.add_argument("--skip-build", action="store_true")
-    p.add_argument("--http-port", type=int, default=8000)
-    p.add_argument("--http-host", default=None)
-    p.add_argument("--no-http-server", action="store_true")
-    p.add_argument("--metapaas-version", default="latest")
-    p.add_argument("--mail-version", default="0.0.1")
-    p.add_argument("--skip-install", action="store_true")
+    p.add_argument(
+        "--metapaas-dir",
+        default=None,
+        help="Path to exordos_metapaas source. If omitted, installs metapaas from the official repo.",
+    )
+    p.add_argument(
+        "--project-dir", default=".", help="Path to metapaas_mail repository (default: .)"
+    )
+    p.add_argument("--output-dir", required=True, help="Directory for build output")
+    p.add_argument("--key-dir", default=None, help="Directory for SSH key pair")
+    p.add_argument(
+        "-i", "--developer-key-path", default=None, help="Path to developer public key"
+    )
+    p.add_argument(
+        "--skip-build",
+        action="store_true",
+        help="Skip exordos build (use existing output)",
+    )
+    p.add_argument(
+        "--http-port",
+        type=int,
+        default=8000,
+        help="Port for the image HTTP server (default: 8000)",
+    )
+    p.add_argument(
+        "--http-host",
+        default=None,
+        help="Host/IP for repository URL (default: auto-detect)",
+    )
+    p.add_argument(
+        "--no-http-server",
+        action="store_true",
+        help="Do not start HTTP server (images served elsewhere)",
+    )
+    p.add_argument(
+        "--metapaas-version",
+        default="latest",
+        help="metapaas element version to install",
+    )
+    p.add_argument(
+        "--mail-version", default="0.0.1", help="mailaas element version to install"
+    )
+    p.add_argument(
+        "--skip-install", action="store_true", help="Skip element installation"
+    )
     p.add_argument(
         "--endpoint",
-        default=os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2:11010"),
+        default=os.environ.get("EXORDOS_ENDPOINT", "http://10.20.0.2/api/core"),
     )
     p.add_argument("--username", default=os.environ.get("EXORDOS_USERNAME", "admin"))
     p.add_argument("--password", default=os.environ.get("EXORDOS_PASSWORD", ""))
-    p.add_argument("--wait-timeout", type=int, default=600)
+    p.add_argument(
+        "--wait-timeout",
+        type=int,
+        default=600,
+        help="Seconds to wait for elements/nodes to become ACTIVE",
+    )
+    p.add_argument(
+        "--cleanup", action="store_true", help="Stop the HTTP server and exit"
+    )
+    p.add_argument(
+        "--repository",
+        default=None,
+        help="Element repository base URL (overrides the auto-detected HTTP server URL).",
+    )
+    p.add_argument(
+        "--index-url",
+        dest="index_url",
+        default=None,
+        help="pip index URL (overrides the auto-detected HTTP server URL).",
+    )
+    p.add_argument("--pid-file", default=None)
     return p
 
 
-def main(argv=None):
-    args = build_parser().parse_args(argv)
+def main(argv: list[str] | None = None) -> None:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     output_dir = pathlib.Path(args.output_dir)
     key_dir = (
@@ -298,7 +465,25 @@ def main(argv=None):
         if args.key_dir
         else pathlib.Path(tempfile.gettempdir()) / "exordos-test-keys"
     )
+    pid_file = (
+        pathlib.Path(args.pid_file)
+        if args.pid_file
+        else pathlib.Path(tempfile.gettempdir()) / "metapaas-http-server.pid"
+    )
 
+    if args.cleanup:
+        if pid_file.exists():
+            pid = int(pid_file.read_text().strip())
+            try:
+                os.kill(pid, signal.SIGTERM)
+                _log(f"Stopped HTTP server (PID {pid})")
+            except ProcessLookupError:
+                _log(f"HTTP server PID {pid} not running")
+            pid_file.unlink(missing_ok=True)
+        return
+
+    # HTTP server base URL
+    http_proc = None
     repository_url = None
     index_url = None
 
@@ -308,27 +493,41 @@ def main(argv=None):
         repository_url = f"http://{host}:{port}/exordos-elements"
         index_url = f"http://{host}:{port}/simple/"
 
+    # Explicit CLI overrides always win (used when nginx is managed externally).
+    if args.repository is not None:
+        repository_url = args.repository
+    if args.index_url is not None:
+        index_url = args.index_url
+
     metapaas_output = output_dir / "metapaas"
     mail_output = output_dir / "mailaas"
     serve_root = output_dir / "serve"
     wheel_output = output_dir / "wheel"
 
+    # ------------------------------------------------------------------
+    # Step 1: SSH key
+    # ------------------------------------------------------------------
     _log("Step 1: SSH key pair")
     _, pub_key = _generate_ssh_key(key_dir)
     pub_key = args.developer_key_path or pub_key
 
+    # ------------------------------------------------------------------
+    # Step 2: Build exordos_metapaas + exordos_mail
+    # ------------------------------------------------------------------
     if not args.skip_build:
         if args.metapaas_dir is not None:
             _log("Step 2a: Building exordos_metapaas")
-            mp_vars = {}
+            mp_vars: dict[str, str] = {}
             if repository_url:
                 mp_vars["repository"] = repository_url
             _build(args.metapaas_dir, str(metapaas_output), pub_key, mp_vars)
         else:
-            _log("Step 2a: Skipping exordos_metapaas build (will install from official repo)")
+            _log(
+                "Step 2a: Skipping exordos_metapaas build (will install from official repo)"
+            )
 
         _log("Step 2b: Building metapaas_mail (DP image + manifests)")
-        mail_vars = {}
+        mail_vars: dict[str, str] = {}
         if repository_url:
             mail_vars["repository"] = repository_url
         if index_url:
@@ -339,27 +538,45 @@ def main(argv=None):
         wheel_path = _build_wheel(args.project_dir, str(wheel_output))
     else:
         _log("Step 2: Skipping build (--skip-build)")
-        wheels = list((wheel_output / "dist").glob("exordos_mail-*.whl"))
-        if not wheels:
-            raise FileNotFoundError("No wheel found; run without --skip-build first")
-        wheel_path = wheels[0]
+        wheel_path = None
 
-    _log("Step 3: Publishing artifacts")
-    serve_root.mkdir(parents=True, exist_ok=True)
-    _publish_to_serve_dir(
-        serve_root,
-        metapaas_output if args.metapaas_dir is not None else None,
-        mail_output,
-        wheel_path,
-    )
-
+    # ------------------------------------------------------------------
+    # Step 3: Publish to serve directory + start HTTP server
+    # ------------------------------------------------------------------
     if not args.no_http_server:
-        _ = _start_http_server(str(serve_root), port)
+        if wheel_path is None:
+            # skip-build mode: locate a previously built wheel
+            wheels = list((wheel_output / "dist").glob("exordos_mail-*.whl"))
+            if not wheels:
+                raise FileNotFoundError(
+                    "No wheel found; run without --skip-build first"
+                )
+            wheel_path = wheels[0]
+
+        _log("Step 3: Publishing artifacts")
+        serve_root.mkdir(parents=True, exist_ok=True)
+        _publish_to_serve_dir(
+            serve_root,
+            metapaas_output if args.metapaas_dir is not None else None,
+            mail_output,
+            wheel_path,
+        )
+        http_proc = _start_http_server(str(serve_root), port)
+        pid_file.parent.mkdir(parents=True, exist_ok=True)
+        pid_file.write_text(str(http_proc.pid))
+        _log(f"Repository URL: {repository_url}")
+        _log(f"Index URL:      {index_url}")
+    else:
+        _log("Step 3: Skipping local HTTP server (--no-http-server)")
 
     if args.skip_install:
-        _log("Steps 4-6: Skipping install (--skip-install)")
+        _log("Step 4-6: Skipping install (--skip-install)")
+        _print_summary(repository_url, index_url, args, "?", "?")
         return
 
+    # ------------------------------------------------------------------
+    # Step 4: Install metapaas element
+    # ------------------------------------------------------------------
     _log("Step 4: Installing metapaas element")
     _ee_install(
         "metapaas",
@@ -379,6 +596,9 @@ def main(argv=None):
         timeout=args.wait_timeout,
     )
 
+    # ------------------------------------------------------------------
+    # Step 5: Install mailaas element (triggers PluginReconciler)
+    # ------------------------------------------------------------------
     _log("Step 5: Installing mailaas element")
     _ee_install(
         "mailaas",
@@ -389,7 +609,7 @@ def main(argv=None):
         args.password,
     )
 
-    _log("Step 5a: Waiting for mailaas element ACTIVE")
+    _log("Step 5a: Waiting for mailaas element ACTIVE (PluginReconciler installs plugin)")
     _wait_for_element(
         "mailaas",
         "ACTIVE",
@@ -399,19 +619,30 @@ def main(argv=None):
         timeout=args.wait_timeout,
     )
 
+    # ------------------------------------------------------------------
+    # Step 6: Get metapaas IAM password
+    # ------------------------------------------------------------------
     _log("Step 6: Reading metapaas IAM password")
     metapaas_password = _get_metapaas_iam_password(cp_ip)
 
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    _print_summary(repository_url, index_url, args, cp_ip, metapaas_password)
+
+
+def _print_summary(repository_url, index_url, args, cp_ip, metapaas_password) -> None:
     _log("=" * 60)
     _log("Environment ready! Suggested env vars for functional tests:")
     _log("")
-    _log(f"  export EXORDOS_ENDPOINT={args.endpoint}")
-    _log(f"  export EXORDOS_USERNAME={args.username}")
-    _log(f"  export EXORDOS_PASSWORD={args.password}")
-    _log(f"  export METAPAAS_USERNAME={METAPAAS_IAM_USER}")
-    _log(f"  export METAPAAS_PASSWORD={metapaas_password}")
-    _log(f"  export EXORDOS_MAIL_CP_URL=http://{cp_ip}:8080")
-    _log("  export EXORDOS_POLL_TIMEOUT=600")
+    # Print without the [prepare-env] prefix so these lines are grep-able by CI.
+    print(f"  export EXORDOS_ENDPOINT={args.endpoint}", flush=True)
+    print(f"  export EXORDOS_USERNAME={args.username}", flush=True)
+    print(f"  export EXORDOS_PASSWORD={args.password}", flush=True)
+    print(f"  export METAPAAS_USERNAME={METAPAAS_IAM_USER}", flush=True)
+    print(f"  export METAPAAS_PASSWORD={metapaas_password}", flush=True)
+    print(f"  export EXORDOS_MAIL_CP_URL=http://{cp_ip}:8080", flush=True)
+    print("  export EXORDOS_POLL_TIMEOUT=600", flush=True)
     _log("")
     _log("Then run:  tox -e py312-functional")
     _log("=" * 60)
