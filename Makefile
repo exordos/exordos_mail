@@ -2,7 +2,10 @@ SHELL := bash
 SSH_KEY    ?= ~/.ssh/id_ed25519.pub
 REPOSITORY ?= http://10.20.0.1:8080/exordos-elements
 INDEX_URL  ?= http://10.20.0.1:8080/simple/
-PKG_VERSION ?=
+# Pin the exact wheel version into the manifest ($metapaas.types.mail.version)
+# so the metapaas PluginReconciler performs a standard version-change upgrade
+# instead of resolving "latest". Auto-derived; override with PKG_VERSION=x.y.z.
+PKG_VERSION ?= $(shell python3 -c "import importlib.metadata as m; print(m.version('exordos_mail'))" 2>/dev/null)
 
 all: help
 
@@ -27,6 +30,7 @@ install:
 	exordos em elements install output/manifests/mailaas.yaml
 
 wheel:
+	rm -rf build dist  # avoid stale build/lib leaking removed files into the wheel
 	python -m build --wheel
 
 publish-wheel: wheel
