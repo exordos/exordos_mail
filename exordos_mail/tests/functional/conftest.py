@@ -224,12 +224,14 @@ def mail_project_id(test_user_project) -> str:
 
 
 def create_account_via_api(
-    mail_api_client, instance_uuid, username, password_hash, project_id, **kwargs
+    mail_api_client, instance_uuid, username, password, project_id, **kwargs
 ):
     collection = f"{MAIL_INSTANCES}{instance_uuid}/accounts/"
     data = {
         "username": username,
-        "password_hash": password_hash,
+        # Write-only plaintext (or verbatim crypt hash); the CP derives the
+        # exim4 hash. password_hash is no longer a writable API field.
+        "password": password,
         "project_id": project_id,
         "instance": f"{MAIL_INSTANCES}{instance_uuid}",
         **kwargs,

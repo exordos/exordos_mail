@@ -116,18 +116,20 @@ def _make_account(
 ) -> dict:
     """Create a mail account and return the API response.
 
-    By default stores a raw SHA512-crypt hash ($6$...) that exim4 can verify
-    directly.  Pass dovecot_prefix=True to store a Dovecot-formatted hash
-    ({SHA512-CRYPT}$6$...) — the DP driver must strip the prefix before
-    writing to /etc/exim4/passwd.
+    By default sends the plaintext password; the CP derives the SHA512-crypt
+    hash exim4 verifies.  Pass dovecot_prefix=True to send a pre-computed
+    Dovecot-formatted hash ({SHA512-CRYPT}$6$...) verbatim — the DP driver must
+    strip the prefix before writing to /etc/exim4/passwd.
     """
-    hashed = _sha512_crypt(password)
-    password_hash = f"{{SHA512-CRYPT}}{hashed}" if dovecot_prefix else hashed
+    if dovecot_prefix:
+        credential = f"{{SHA512-CRYPT}}{_sha512_crypt(password)}"
+    else:
+        credential = password
     return mail_conftest.create_account_via_api(
         mail_api_client,
         instance_uuid,
         username,
-        password_hash,
+        credential,
         project_id,
     )
 
@@ -285,9 +287,7 @@ class TestSmtpAuthSync:
     def test_password_update_takes_effect(
         self, mail_api_client, mail_instance_uuid, mail_project_id, dp_host, domain
     ):
-        """Updating password_hash must take effect on DP — old password stops working."""
-        import crypt  # noqa: PLC0415
-
+        """Updating the password must take effect on DP — old password stops working."""
         username = f"repw-{uuid.uuid4().hex[:8]}"
         old_password = "OldPass111"
         new_password = "NewPass222"
@@ -298,11 +298,8 @@ class TestSmtpAuthSync:
             dp_host, f"{username}@{domain}", old_password, expect_success=True
         )
 
-        new_hash = "{SHA512-CRYPT}" + crypt.crypt(
-            new_password, crypt.mksalt(crypt.METHOD_SHA512)
-        )
         collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
-        mail_api_client.update(collection, uuid=acc["uuid"], password_hash=new_hash)
+        mail_api_client.update(collection, uuid=acc["uuid"], password=new_password)
 
         _wait_for_auth(
             dp_host, f"{username}@{domain}", new_password, expect_success=True
