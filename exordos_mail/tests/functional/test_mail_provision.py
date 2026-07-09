@@ -34,17 +34,17 @@ class TestInstanceLifecycle:
 class TestAccountCRUD:
     def test_create_account(self, mail_api_client, mail_instance_uuid, mail_project_id):
         username = f"user-{uuid.uuid4().hex[:8]}"
-        # SHA512-CRYPT hash of "testpass"
-        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        password = "testpass"
         account = mail_conftest.create_account_via_api(
             mail_api_client,
             mail_instance_uuid,
             username,
-            password_hash,
+            password,
             mail_project_id,
         )
         assert account["username"] == username
-        assert account.get("password_hash") is None  # hidden after create
+        assert account.get("password") is None  # write-only, hidden on read
+        assert account.get("password_hash") is None  # derived, hidden on read
 
         # Cleanup
         collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
@@ -59,12 +59,12 @@ class TestAccountCRUD:
         self, mail_api_client, mail_instance_uuid, mail_project_id
     ):
         username = f"update-{uuid.uuid4().hex[:8]}"
-        password_hash = "$6$salt$hash"
+        password = "updatepass"
         account = mail_conftest.create_account_via_api(
             mail_api_client,
             mail_instance_uuid,
             username,
-            password_hash,
+            password,
             mail_project_id,
         )
 
@@ -81,12 +81,12 @@ class TestAccountCRUD:
         self, mail_api_client, mail_instance_uuid, mail_project_id
     ):
         username = f"disabled-{uuid.uuid4().hex[:8]}"
-        password_hash = "{SHA512-CRYPT}$6$rounds=5000$salt$hash"
+        password = "disabledpass"
         account = mail_conftest.create_account_via_api(
             mail_api_client,
             mail_instance_uuid,
             username,
-            password_hash,
+            password,
             mail_project_id,
         )
 
