@@ -87,10 +87,13 @@ class MailAccountController(
                     constants.ALL: field_p.Permissions.RO,
                     constants.CREATE: field_p.Permissions.RW,
                 },
-                "password_hash": {
+                "password": {
                     constants.ALL: field_p.Permissions.HIDDEN,
                     constants.CREATE: field_p.Permissions.RW,
                     constants.UPDATE: field_p.Permissions.RW,
+                },
+                "password_hash": {
+                    constants.ALL: field_p.Permissions.HIDDEN,
                 },
             },
         ),

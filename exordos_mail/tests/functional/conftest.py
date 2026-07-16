@@ -44,9 +44,27 @@ MAIL_VERSIONS = "/v1/types/mail/versions/"
 NODE_COLLECTION = "/v1/compute/nodes/"
 
 OWNER_ROLE_UUID = "726f6c65-0000-0000-0000-000000000002"
-DEFAULT_CLIENT_UUID = "00000000-0000-0000-0000-000000000000"
-DEFAULT_CLIENT_ID = "GenesisCoreClientId"
-DEFAULT_CLIENT_SECRET = "GenesisCoreSecret"
+# Address the core's default IAM client by its "default" slug, not the zero
+# UUID: `exordos bootstrap` provisions it with a per-stand client_id/secret, so
+# only the slug resolves reliably across stands.
+DEFAULT_CLIENT_UUID = "default"
+
+
+class PublicClientAuth(iam_clients.GenesisCoreAuth):
+    """Auth for the core's default *public* client.
+
+    The bootstrap-provisioned default client authenticates the password grant by
+    client UUID alone; its client_secret is generated per stand and unknown to
+    the tests. Sending any client_id/client_secret makes core validate them and
+    reject with ``invalid_client`` (401), so omit them entirely — mirroring the
+    exordos CLI's CoreIamAuthenticator, which sends neither.
+    """
+
+    def get_password_auth_params(self) -> dict:
+        params = super().get_password_auth_params()
+        params.pop("client_id", None)
+        params.pop("client_secret", None)
+        return params
 
 
 def _get_auth_data(endpoint: str | None = None, project_id: str | None = None) -> dict:
@@ -63,8 +81,6 @@ def _get_auth_data(endpoint: str | None = None, project_id: str | None = None) -
         refresh_token=None,
         scope=scope,
         client_uuid=DEFAULT_CLIENT_UUID,
-        client_id=DEFAULT_CLIENT_ID,
-        client_secret=DEFAULT_CLIENT_SECRET,
     )
 
 
@@ -75,12 +91,10 @@ def core_client() -> http_client.CollectionBaseClient:
 
 @pytest.fixture(scope="session")
 def iam_rest_client() -> iam_clients.GenericAutoRefreshRESTClient:
-    auth = iam_clients.GenesisCoreAuth(
+    auth = PublicClientAuth(
         username=EXORDOS_USERNAME,
         password=EXORDOS_PASSWORD,
         client_uuid=DEFAULT_CLIENT_UUID,
-        client_id=DEFAULT_CLIENT_ID,
-        client_secret=DEFAULT_CLIENT_SECRET,
     )
     endpoint = f"{EXORDOS_ENDPOINT.rstrip('/')}/v1/"
     return iam_clients.GenericAutoRefreshRESTClient(endpoint, auth)
@@ -224,12 +238,14 @@ def mail_project_id(test_user_project) -> str:
 
 
 def create_account_via_api(
-    mail_api_client, instance_uuid, username, password_hash, project_id, **kwargs
+    mail_api_client, instance_uuid, username, password, project_id, **kwargs
 ):
     collection = f"{MAIL_INSTANCES}{instance_uuid}/accounts/"
     data = {
         "username": username,
-        "password_hash": password_hash,
+        # Write-only plaintext (or verbatim crypt hash); the CP derives the
+        # exim4 hash. password_hash is no longer a writable API field.
+        "password": password,
         "project_id": project_id,
         "instance": f"{MAIL_INSTANCES}{instance_uuid}",
         **kwargs,

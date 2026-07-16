@@ -106,9 +106,20 @@ jobs:
       - name: Patch manifest for CI
         run: |
           MF=/srv/nginx/exordos-elements/mailaas/$MAILAAS_VERSION/manifests/mailaas.yaml
+          # Pin the exact freshly-built wheel version into the plugin's manifest
+          # entry. Without this the entry renders `version: ""`, so the metapaas
+          # PluginReconciler installs `exordos_mail` unpinned — and since pip's
+          # default index is public PyPI (install_paas passes --extra-index-url,
+          # not --index-url), a stale higher published version (e.g. 0.0.4) wins
+          # over our lower setuptools_scm dev build (0.0.3.devN). Pinning to the
+          # exact local version forces the install from our nginx index, because
+          # PyPI has no local-versioned (…+g<hash>) wheel to satisfy it.
+          WHEEL="$(ls /srv/nginx/simple/exordos_mail-*.whl | head -1)"
+          PKG_VERSION="$(basename "$WHEEL" | sed -E 's/^exordos_mail-(.+)-py3-none-any\.whl$/\1/')"
+          sed -i 's|version: ""|version: "'"$PKG_VERSION"'"|' "$MF"
           sed -i 's|index_url: ""|index_url: "'"$NGINX_URL"'/simple/"|' "$MF"
           sed -i 's|image: "https://repo.exordos.com/exordos-elements/|image: "'"$NGINX_URL"'/exordos-elements/|' "$MF"
-          grep -E 'index_url|image:' "$MF"
+          grep -E 'version: "|index_url|image:' "$MF"
 
       - name: Install elements + wait
         run: |
@@ -116,6 +127,7 @@ jobs:
             --skip-build \
             --no-http-server \
             --repository "$NGINX_URL/exordos-elements" \
+            --elements-dir /srv/nginx/exordos-elements \
             --mail-version "$MAILAAS_VERSION" \
             --output-dir /tmp/metapaas-mail-build \
             --endpoint $CORE_ENDPOINT_URL \
