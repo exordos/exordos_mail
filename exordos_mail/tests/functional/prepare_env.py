@@ -227,9 +227,9 @@ def _ee_install(
         "ee",
         "install",
         name,
-        "--version",
-        version,
     ]
+    if version != "latest":
+        cmd += ["--version", version]
     if repository is not None:
         cmd += ["--repository", repository]
     _run(cmd)
