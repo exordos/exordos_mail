@@ -5,9 +5,10 @@ Steps:
   1. Generate SSH key pair.
   2. Build metapaas_mail DP image + wheel (from --project-dir).
      Optionally build exordos_metapaas CP image (from --metapaas-dir).
-  3. Serve mail artifacts via a local HTTP server.
-  4. Install metapaas element (from official repo, or local if --metapaas-dir given);
-     wait for CP node ACTIVE.
+  3. Serve mail artifacts via a local HTTP server; generate the root
+     inventory.json the Core nginx repo driver requires.
+  4. Register the local element repository in Core (exordos repo add),
+     then install the metapaas element; wait for CP node ACTIVE.
   5. Install mailaas element; wait for PluginReconciler to activate mail plugin.
   6. Print env vars needed by the functional test suite.
 
@@ -34,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -42,6 +44,7 @@ import time
 LOCAL_REPO_PATH = "/srv/exordos-local-repo/exordos-elements"
 METAPAAS_PROJECT_ID = "4d657461-0000-0000-0000-000000000002"
 METAPAAS_IAM_USER = "metapaas"
+ZERO_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
 
 # ---------------------------------------------------------------------------
@@ -159,46 +162,26 @@ def _publish_to_serve_dir(
     metapaas_output: pathlib.Path | None,
     mail_output: pathlib.Path,
     wheel_path: pathlib.Path,
-) -> None:
-    """Arrange build artifacts into the directory structure the manifests expect.
+) -> pathlib.Path:
+    """Merge build outputs into the directory structure served over HTTP.
 
-    metapaas CP image:  serve_root/metapaas/<version>/images/... (optional)
-    mailaas DP image:   serve_root/mailaas/<version>/images/exordos-metapaas-mail-dp.raw.zst
-    mailaas manifest:   serve_root/mailaas/<version>/mailaas.yaml
-    pip wheel:          serve_root/simple/exordos_mail-*.whl
+    ``exordos build`` writes ``<output>/exordos-elements/<name>/<version>/``
+    (inventory.json, manifests/, images/, ...) — the exact layout the Core
+    nginx repo driver expects, so the element trees are copied verbatim.
+
+    elements:  serve_root/exordos-elements/<name>/<version>/...
+    pip wheel: serve_root/simple/exordos_mail-*.whl
     """
-
-    def _read_version(output_dir: pathlib.Path) -> str:
-        inv = output_dir / "inventory.json"
-        if inv.exists():
-            data = json.loads(inv.read_text())
-            if isinstance(data, list):
-                data = data[0]
-            return data.get("version", "0.0.1")
-        return "0.0.1"
-
-    if metapaas_output is not None:
-        mp_ver = _read_version(metapaas_output)
-        mp_img_dir = serve_root / "metapaas" / mp_ver / "images"
-        mp_img_dir.mkdir(parents=True, exist_ok=True)
-        for img in (metapaas_output / "images").glob("*.zst"):
-            dst = mp_img_dir / img.name
-            if not dst.exists():
-                shutil.copy2(img, dst)
-            _log(f"  metapaas image: metapaas/{mp_ver}/images/{img.name}")
-
-    mail_ver = _read_version(mail_output)
-    mail_img_dir = serve_root / "mailaas" / mail_ver / "images"
-    mail_img_dir.mkdir(parents=True, exist_ok=True)
-    for img in (mail_output / "images").glob("*.zst"):
-        dst = mail_img_dir / img.name
-        if not dst.exists():
-            shutil.copy2(img, dst)
-        _log(f"  mailaas DP image: mailaas/{mail_ver}/images/{img.name}")
-    for mf in (mail_output / "manifests").glob("*.yaml"):
-        dst = serve_root / "mailaas" / mail_ver / mf.name
-        shutil.copy2(mf, dst)
-        _log(f"  mailaas manifest: mailaas/{mail_ver}/{mf.name}")
+    elements_root = serve_root / "exordos-elements"
+    for output in (metapaas_output, mail_output):
+        if output is None:
+            continue
+        src = output / "exordos-elements"
+        if not src.is_dir():
+            raise FileNotFoundError(f"No exordos-elements dir in build output {output}")
+        shutil.copytree(src, elements_root, dirs_exist_ok=True)
+        for inv in sorted(src.glob("*/*/inventory.json")):
+            _log(f"  element: {inv.parent.relative_to(src)}")
 
     pip_dir = serve_root / "simple"
     pip_dir.mkdir(parents=True, exist_ok=True)
@@ -206,15 +189,83 @@ def _publish_to_serve_dir(
     if not dst.exists():
         shutil.copy2(wheel_path, dst)
     _log(f"  pip wheel: simple/{wheel_path.name}")
+    return elements_root
+
+
+def _generate_root_inventory(elements_root: pathlib.Path) -> None:
+    """Write the root inventory.json the Core nginx repo driver requires.
+
+    ``exordos build`` only writes per-element inventories; without
+    ``<repo>/inventory.json`` the repository never becomes ACTIVE in Core.
+
+    Format: ``{"elements": {<name>: {<version>: <element inventory>}}}``.
+    """
+    elements: dict[str, dict] = {}
+    for inv_path in sorted(elements_root.glob("*/*/inventory.json")):
+        version = inv_path.parent.name
+        name = inv_path.parent.parent.name
+        if version == "latest":
+            continue
+        elements.setdefault(name, {})[version] = json.loads(inv_path.read_text())
+    root_inv = elements_root / "inventory.json"
+    root_inv.write_text(json.dumps({"elements": elements}, indent=2, sort_keys=True))
+    total = sum(len(v) for v in elements.values())
+    _log(f"Root inventory: {root_inv} ({total} element version(s))")
+
+
+def _ensure_core_repo(
+    repo_url: str,
+    endpoint: str,
+    username: str,
+    password: str,
+) -> None:
+    """Register repo_url as an element repository in Core (or refresh it)."""
+    # Core's nginx driver joins element paths with urljoin, so the URL must
+    # end with a slash or the last path segment gets replaced.
+    repo_url = repo_url.rstrip("/") + "/"
+    base_cmd = ["exordos", "-e", endpoint, "-u", username, "-p", password]
+    result = subprocess.run(
+        base_cmd + ["repo", "list", "-o", "json"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    repos = json.loads(result.stdout)
+    existing = next(
+        (r for r in repos if r.get("uri", "").rstrip("/") == repo_url.rstrip("/")),
+        None,
+    )
+    if existing is not None:
+        _log(f"Repository {repo_url} already registered; refreshing")
+        _run(base_cmd + ["repo", "refresh", existing["uuid"]])
+        return
+    # Derive the name from the URL so reruns with a different URL don't
+    # collide with an existing repository name.
+    netloc = urlparse(repo_url).netloc.replace(":", "-").replace(".", "-")
+    _run(
+        base_cmd
+        + [
+            "repo",
+            "add",
+            "-p",
+            ZERO_PROJECT_ID,
+            "-n",
+            f"local-{netloc}",
+            "--repo-url",
+            repo_url,
+            "--priority",
+            "4096",
+        ]
+    )
 
 
 def _ee_install(
     name: str,
     version: str,
-    repository: str | None,
     endpoint: str,
     username: str,
     password: str,
+    timeout: int = 300,
 ) -> None:
     cmd = [
         "exordos",
@@ -230,9 +281,18 @@ def _ee_install(
     ]
     if version != "latest":
         cmd += ["--version", version]
-    if repository is not None:
-        cmd += ["--repository", repository]
-    _run(cmd)
+    # A freshly registered repository is scanned asynchronously, so the
+    # element may not be visible yet — retry until the scan completes.
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            _run(cmd)
+            return
+        except subprocess.CalledProcessError:
+            if time.monotonic() >= deadline:
+                raise
+            _log(f"Element '{name}' not installable yet; retrying in 10s…")
+            time.sleep(10)
 
 
 def _wait_for_element(
@@ -271,7 +331,19 @@ def _wait_for_node(
     last_raw = ""
     while time.monotonic() < deadline:
         result = subprocess.run(
-            ["exordos", "-e", endpoint, "-u", username, "-p", password, "cn", "list", "-o", "json"],
+            [
+                "exordos",
+                "-e",
+                endpoint,
+                "-u",
+                username,
+                "-p",
+                password,
+                "cn",
+                "list",
+                "-o",
+                "json",
+            ],
             capture_output=True,
             text=True,
         )
@@ -386,7 +458,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to exordos_metapaas source. If omitted, installs metapaas from the official repo.",
     )
     p.add_argument(
-        "--project-dir", default=".", help="Path to metapaas_mail repository (default: .)"
+        "--project-dir",
+        default=".",
+        help="Path to metapaas_mail repository (default: .)",
     )
     p.add_argument("--output-dir", required=True, help="Directory for build output")
     p.add_argument("--key-dir", default=None, help="Directory for SSH key pair")
@@ -444,6 +518,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--repository",
         default=None,
         help="Element repository base URL (overrides the auto-detected HTTP server URL).",
+    )
+    p.add_argument(
+        "--elements-dir",
+        default=None,
+        help=(
+            "Local filesystem path of the element repository served at "
+            "--repository (e.g. the nginx root); a root inventory.json is "
+            "(re)generated there before installing."
+        ),
     )
     p.add_argument(
         "--index-url",
@@ -555,12 +638,13 @@ def main(argv: list[str] | None = None) -> None:
 
         _log("Step 3: Publishing artifacts")
         serve_root.mkdir(parents=True, exist_ok=True)
-        _publish_to_serve_dir(
+        elements_root = _publish_to_serve_dir(
             serve_root,
             metapaas_output if args.metapaas_dir is not None else None,
             mail_output,
             wheel_path,
         )
+        _generate_root_inventory(elements_root)
         http_proc = _start_http_server(str(serve_root), port)
         pid_file.parent.mkdir(parents=True, exist_ok=True)
         pid_file.write_text(str(http_proc.pid))
@@ -569,19 +653,25 @@ def main(argv: list[str] | None = None) -> None:
     else:
         _log("Step 3: Skipping local HTTP server (--no-http-server)")
 
+    if args.elements_dir is not None:
+        _generate_root_inventory(pathlib.Path(args.elements_dir))
+
     if args.skip_install:
         _log("Step 4-6: Skipping install (--skip-install)")
         _print_summary(repository_url, index_url, args, "?", "?")
         return
 
     # ------------------------------------------------------------------
-    # Step 4: Install metapaas element
+    # Step 4: Register local repository + install metapaas element
     # ------------------------------------------------------------------
+    if repository_url:
+        _log("Step 4: Registering local element repository in Core")
+        _ensure_core_repo(repository_url, args.endpoint, args.username, args.password)
+
     _log("Step 4: Installing metapaas element")
     _ee_install(
         "metapaas",
         args.metapaas_version,
-        repository_url if args.metapaas_dir is not None else None,
         args.endpoint,
         args.username,
         args.password,
@@ -603,13 +693,14 @@ def main(argv: list[str] | None = None) -> None:
     _ee_install(
         "mailaas",
         args.mail_version,
-        repository_url,
         args.endpoint,
         args.username,
         args.password,
     )
 
-    _log("Step 5a: Waiting for mailaas element ACTIVE (PluginReconciler installs plugin)")
+    _log(
+        "Step 5a: Waiting for mailaas element ACTIVE (PluginReconciler installs plugin)"
+    )
     _wait_for_element(
         "mailaas",
         "ACTIVE",

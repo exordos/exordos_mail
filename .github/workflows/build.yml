@@ -127,6 +127,7 @@ jobs:
             --skip-build \
             --no-http-server \
             --repository "$NGINX_URL/exordos-elements" \
+            --elements-dir /srv/nginx/exordos-elements \
             --mail-version "$MAILAAS_VERSION" \
             --output-dir /tmp/metapaas-mail-build \
             --endpoint $CORE_ENDPOINT_URL \
