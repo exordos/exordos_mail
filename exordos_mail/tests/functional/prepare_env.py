@@ -226,7 +226,7 @@ def _ee_install(
         "install",
         name,
     ]
-    if version is not None:
+    if version is not None and version != "latest":
         cmd += ["--version", version]
     _run(cmd)
 
