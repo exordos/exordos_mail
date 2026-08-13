@@ -1,7 +1,7 @@
 name: "example_mail"
 description: "Example: a mail instance hosted by the metapaas control plane, created declaratively via the mailaas element API"
 schema_version: 1
-version: "{{ version }}"
+version: "1.0.0"
 api_version: "v1"
 
 requirements:
