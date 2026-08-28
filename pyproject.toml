@@ -8,10 +8,10 @@ license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 dependencies = [
     "oslo.config>=3.22.2,<10.0.0",
-    "restalchemy>=15.0.0,<16.0.0",
-    "gcl_iam>=1.0.3,<2.0.0",
-    "gcl_looper>=1.2.3,<2.0.0",
-    "gcl_sdk>=3.0.5,<4.0.0",
+    "restalchemy>=16.0.1,<17.0.0",  # Apache-2.0
+    "gcl_iam>=1.4.0,<2.0.0",  # Apache-2.0
+    "gcl_looper>=1.2.3,<2.0.0",  # Apache-2.0
+    "gcl_sdk>=3.6.0,<4.0.0",  # Apache-2.0
     "exordos_metapaas>=0.0.1",
     "passlib>=1.7.0",
 ]
@@ -29,7 +29,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools_scm]
 
 [project.urls]
-homepage = "https://github.com/infraguys/metapaas_mail/"
+homepage = "https://github.com/exordos/exordos_mail/"
 
 [project.optional-dependencies]
 dev = [
