@@ -25,6 +25,8 @@ build:
   elements:
     # mail dataplane image (launched per mail instance by the infra builder)
     - manifest: manifests/mailaas.yaml.j2
+      artifacts:
+        - path: artifacts/icon.jpg
       images:
       - name: exordos-metapaas-mail-dp
         format: GEN_IMG_FORMAT_CORE=zst
