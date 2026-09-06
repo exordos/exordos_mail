@@ -100,7 +100,7 @@ def _wait_for_auth(
 
 def _sha512_crypt(password: str) -> str:
     """Return a raw SHA512-crypt hash suitable for exim4 lsearch ($6$...)."""
-    import crypt  # noqa: PLC0415 — stdlib, Python ≤3.12
+    import crypt
 
     return crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
 
@@ -286,7 +286,7 @@ class TestSmtpAuthSync:
         self, mail_api_client, mail_instance_uuid, mail_project_id, dp_host, domain
     ):
         """Updating password_hash must take effect on DP — old password stops working."""
-        import crypt  # noqa: PLC0415
+        import crypt
 
         username = f"repw-{uuid.uuid4().hex[:8]}"
         old_password = "OldPass111"

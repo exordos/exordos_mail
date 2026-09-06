@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Prepare an Exordos Core environment for metapaas_mail integration testing.
 
 Steps:
@@ -58,7 +57,7 @@ def _get_default_ip() -> str:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
-    except Exception:
+    except OSError:
         return "127.0.0.1"
 
 
@@ -138,7 +137,7 @@ def _start_http_server(serve_dir: str, port: int) -> subprocess.Popen:
         [sys.executable, "-m", "http.server", str(port), "--directory", serve_dir],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        preexec_fn=os.setsid,
+        start_new_session=True,
     )
     time.sleep(1)
     if proc.poll() is not None:
@@ -247,6 +246,7 @@ def _wait_for_element(
             ["exordos", "-e", endpoint, "-u", username, "-p", password, "ee", "list"],
             capture_output=True,
             text=True,
+            check=False,
         )
         for line in result.stdout.splitlines():
             if name in line:
@@ -268,14 +268,27 @@ def _wait_for_node(
     last_raw = ""
     while time.monotonic() < deadline:
         result = subprocess.run(
-            ["exordos", "-e", endpoint, "-u", username, "-p", password, "cn", "list", "-o", "json"],
+            [
+                "exordos",
+                "-e",
+                endpoint,
+                "-u",
+                username,
+                "-p",
+                password,
+                "cn",
+                "list",
+                "-o",
+                "json",
+            ],
             capture_output=True,
             text=True,
+            check=False,
         )
         last_raw = result.stdout
         try:
             nodes = json.loads(result.stdout)
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             time.sleep(15)
             continue
         for node in nodes if isinstance(nodes, list) else []:
@@ -309,11 +322,12 @@ def _get_metapaas_iam_password(cp_ip: str) -> str:
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
         pw = result.stdout.strip()
         if pw:
             return pw
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         _log(f"WARNING: Could not read IAM password via SSH: {e}")
 
     # Fallback: read via virsh guest-exec (if running on the hypervisor host)
@@ -322,13 +336,20 @@ def _get_metapaas_iam_password(cp_ip: str) -> str:
             ["sudo", "virsh", "list", "--all"],
             capture_output=True,
             text=True,
+            check=False,
         )
         for line in virsh_result.stdout.splitlines():
             if "metapaas-cp" in line:
                 vm_name = line.split()[1]
                 script = "cat /etc/exordos_init.txt | grep IAM_USER_PASS | cut -d= -f2"
                 enc = subprocess.run(
-                    ["base64", "-w0"], input=script.encode(), capture_output=True
+                    [
+                        "base64",
+                        "-w0",
+                    ],
+                    input=script.encode(),
+                    capture_output=True,
+                    check=False,
                 ).stdout.decode()
                 pid_result = subprocess.run(
                     [
@@ -340,6 +361,7 @@ def _get_metapaas_iam_password(cp_ip: str) -> str:
                     ],
                     capture_output=True,
                     text=True,
+                    check=False,
                 )
                 pid = json.loads(pid_result.stdout)["return"]["pid"]
                 time.sleep(2)
@@ -353,6 +375,7 @@ def _get_metapaas_iam_password(cp_ip: str) -> str:
                     ],
                     capture_output=True,
                     text=True,
+                    check=False,
                 )
                 import base64
 
@@ -360,7 +383,7 @@ def _get_metapaas_iam_password(cp_ip: str) -> str:
                 pw = base64.b64decode(out.get("out-data", "")).decode().strip()
                 if pw:
                     return pw
-    except Exception as e:
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError) as e:
         _log(f"WARNING: Could not read IAM password via virsh: {e}")
 
     return METAPAAS_IAM_USER  # fallback to default
@@ -383,7 +406,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to exordos_metapaas source. If omitted, installs metapaas from the official repo.",
     )
     p.add_argument(
-        "--project-dir", default=".", help="Path to metapaas_mail repository (default: .)"
+        "--project-dir",
+        default=".",
+        help="Path to metapaas_mail repository (default: .)",
     )
     p.add_argument("--output-dir", required=True, help="Directory for build output")
     p.add_argument("--key-dir", default=None, help="Directory for SSH key pair")
@@ -604,7 +629,9 @@ def main(argv: list[str] | None = None) -> None:
         args.password,
     )
 
-    _log("Step 5a: Waiting for mailaas element ACTIVE (PluginReconciler installs plugin)")
+    _log(
+        "Step 5a: Waiting for mailaas element ACTIVE (PluginReconciler installs plugin)"
+    )
     _wait_for_element(
         "mailaas",
         "ACTIVE",

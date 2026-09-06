@@ -14,6 +14,7 @@
 
 import typing as tp
 import uuid as sys_uuid
+from typing import ClassVar
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.infra import constants as sdk_c
@@ -26,7 +27,7 @@ ROOT_DISK_SIZE = 6
 
 
 class MailInstance(models.MailInstance, ua_models.InstanceWithDerivativesMixin):
-    __derivative_model_map__ = {
+    __derivative_model_map__: ClassVar[dict[str, type]] = {
         "node_set": sdk_models.NodeSet,
         "node": sdk_models.Node,
         "config": sdk_models.Config,

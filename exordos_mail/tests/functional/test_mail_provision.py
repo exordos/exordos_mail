@@ -102,7 +102,7 @@ class TestAccountCRUD:
 
 class TestInstanceROFields:
     def test_domain_read_only_after_create(self, mail_api_client, mail_instance_uuid):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - API client exception varies by backend
             mail_api_client.update(
                 mail_conftest.MAIL_INSTANCES,
                 uuid=mail_instance_uuid,
@@ -129,7 +129,7 @@ class TestInstanceROFields:
             mail_conftest.MAIL_INSTANCES, uuid=mail_instance_uuid
         )
         old_size = instance.get("disk_size", 0)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 - API client exception varies by backend
             mail_api_client.update(
                 mail_conftest.MAIL_INSTANCES,
                 uuid=mail_instance_uuid,

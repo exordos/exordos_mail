@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import subprocess
+from typing import ClassVar
 
 from gcl_sdk.agents.universal import constants as c
 from gcl_sdk.agents.universal.drivers import meta
@@ -52,7 +53,9 @@ def _reload_exim4() -> None:
         LOG.info("exim4 reloaded")
     except Exception:
         LOG.warning("Failed to reload exim4; attempting restart", exc_info=True)
-        subprocess.run(["systemctl", "restart", "exim4"], timeout=30)
+
+
+subprocess.run(["systemctl", "restart", "exim4"], check=False, timeout=30)
 
 
 class MailInstance(meta.MetaDataPlaneModel):
@@ -83,7 +86,7 @@ class MailInstance(meta.MetaDataPlaneModel):
     dkim_public_key = properties.property(ra_types.String(max_length=4096), default="")
     dkim_selector = properties.property(ra_types.String(max_length=255), default="")
 
-    _meta_fields = {"uuid", "name", "domain"}
+    _meta_fields: ClassVar[set[str]] = {"uuid", "name", "domain"}
 
     def get_meta_model_fields(self) -> set[str] | None:
         return self._meta_fields
@@ -182,7 +185,7 @@ class MailCapabilityDriver(meta.MetaFileStorageAgentDriver):
 
     MAIL_META_PATH = os.path.join(c.WORK_DIR, "mail_meta.json")
 
-    __model_map__ = {
+    __model_map__: ClassVar[dict[str, type]] = {
         "mail_instance_node": MailInstance,
     }
 

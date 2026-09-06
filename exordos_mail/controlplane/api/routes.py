@@ -12,6 +12,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from typing import ClassVar
+
 from restalchemy.api import routes
 
 from exordos_mail.controlplane.api import controllers
@@ -36,7 +38,7 @@ class MailRoute(routes.Route):
     """Handler for /v1/types/mail/ endpoint (mounted by metapaas)."""
 
     __controller__ = controllers.MailController
-    __allow_methods__ = [routes.FILTER]
+    __allow_methods__: ClassVar[list[str]] = [routes.FILTER]
 
     # /v1/types/mail/instances/[<uuid>]
     instances = routes.route(MailInstanceRoute)
