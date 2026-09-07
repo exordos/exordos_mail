@@ -45,7 +45,7 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
         core_password: str,
         core_api_base_url: str,
         project_id: sys_uuid.UUID,
-        instance_model: tp.Type[models.MailInstance] = models.MailInstance,
+        instance_model: type[models.MailInstance] = models.MailInstance,
     ):
         super().__init__(instance_model)
         self._project_id = project_id
@@ -133,7 +133,7 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
 
         # Mail is single-node; generate config for each provisioned node
         new_configs = []
-        for node_uuid_str, _ in nodeset_actual.nodes.items():
+        for node_uuid_str in nodeset_actual.nodes:
             content = MAIL_CONF_TEMPLATE.format(domain=instance.domain)
             config = instance._create_config(
                 sys_uuid.UUID(node_uuid_str), self._project_id, content

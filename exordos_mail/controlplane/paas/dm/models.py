@@ -13,6 +13,7 @@
 #    under the License.
 
 import typing as tp
+from typing import ClassVar
 
 from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.infra import constants as pc
@@ -62,7 +63,7 @@ class MailInstance(
     ua_models.InstanceWithDerivativesMixin,
 ):
     __master_model__ = sdk_models.NodeSet
-    __derivative_model_map__ = {
+    __derivative_model_map__: ClassVar[dict[str, type]] = {
         "mail_instance_node": MailInstanceNode,
     }
 

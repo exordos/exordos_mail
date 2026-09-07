@@ -45,7 +45,7 @@ class PaaSBuilder(builder.PaaSBuilder):
 class MailInstanceBuilder(PaaSBuilder):
     def __init__(
         self,
-        instance_model: tp.Type[models.MailInstance] = models.MailInstance,
+        instance_model: type[models.MailInstance] = models.MailInstance,
     ):
         super().__init__(instance_model)
 

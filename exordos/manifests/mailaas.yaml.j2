@@ -19,7 +19,7 @@ resources:
       name: "mail"
       element_name: "mailaas"
       package: "exordos_mail"
-      version: "{{ pkg_version | default('') }}"
+      version: "$self:version"
       index_url: "{{ index_url | default('') }}"
       project_id: "4d657461-0000-0000-0000-000000000002"
 

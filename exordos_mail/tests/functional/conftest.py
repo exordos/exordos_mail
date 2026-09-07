@@ -55,17 +55,17 @@ def _get_auth_data(endpoint: str | None = None, project_id: str | None = None) -
         scope = http_client.CoreIamAuthenticator.project_scope(
             sys_uuid.UUID(project_id)
         )
-    return dict(
-        endpoint=endpoint or EXORDOS_ENDPOINT,
-        username=EXORDOS_USERNAME,
-        password=EXORDOS_PASSWORD,
-        access_token=None,
-        refresh_token=None,
-        scope=scope,
-        client_uuid=DEFAULT_CLIENT_UUID,
-        client_id=DEFAULT_CLIENT_ID,
-        client_secret=DEFAULT_CLIENT_SECRET,
-    )
+    return {
+        "endpoint": endpoint or EXORDOS_ENDPOINT,
+        "username": EXORDOS_USERNAME,
+        "password": EXORDOS_PASSWORD,
+        "access_token": None,
+        "refresh_token": None,
+        "scope": scope,
+        "client_uuid": DEFAULT_CLIENT_UUID,
+        "client_id": DEFAULT_CLIENT_ID,
+        "client_secret": DEFAULT_CLIENT_SECRET,
+    }
 
 
 @pytest.fixture(scope="session")
@@ -134,7 +134,7 @@ def test_user(iam_rest_client) -> dict:
     yield user
     try:
         iam_rest_client.delete_user(user["uuid"])
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - cleanup must not mask test failures
         pass
 
 
@@ -192,7 +192,7 @@ def mail_instance(mail_api_client, mail_version_uuid, test_user_project) -> dict
     )
     try:
         mail_api_client.delete(MAIL_INSTANCES, uuid=instance_uuid)
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - cleanup must not mask test failures
         pass
 
 
