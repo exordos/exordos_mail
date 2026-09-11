@@ -24,22 +24,20 @@ mailaas-dp-<uuid> (VM)
 ### Build
 
 ```bash
-make build \
-  REPOSITORY=http://10.20.0.1:8080/exordos-elements \
-  INDEX_URL=http://10.20.0.1:8080/simple/
+make build
 ```
 
-Produces:
-- `output/images/exordos-metapaas-mail-dp.raw.zst` (DP image)
-- `output/manifests/mailaas.yaml` (element manifest)
+Produces the DP image, the element manifest and the `exordos_mail` wheel: the
+manifest points at that exact wheel as a build artifact, so nothing has to
+resolve a version off a pip index.
 
 ### Install on running metapaas
 
 ```bash
-make install
+exordos e e install mailaas        # add -v <version> to pin a build
 ```
 
-PluginReconciler on metapaas-cp installs `exordos_paas_mail` via pip and
+PluginReconciler on metapaas-cp installs the `exordos_mail` wheel and
 activates the `/v1/types/mail/` route.
 
 ### Create Instance
@@ -155,12 +153,13 @@ your domain (referred to below as `$1`, e.g. `example.com`).
 │   │   └── 0001-drop-root-password.py
 │   └── tests/
 │       ├── unit/             # Unit tests (models, driver)
-│       └── functional/       # E2E tests (prepare_env.py + SMTP auth tests)
+│       └── functional/       # E2E tests (CP API + SMTP auth against a live stand)
 ├── exordos/
 │   ├── exordos.yaml          # Build config (deps + elements + DP image)
 │   ├── images/
 │   │   ├── dp_install.sh     # Packer: install exim4 + configure script + agent
-│   │   └── dp_bootstrap.sh   # First-boot: persistent disk + start configure service
+│   │   ├── dp_bootstrap.sh   # First-boot: persistent disk + start configure service
+│   │   └── build_wheel.sh    # Builds the wheel shipped as the pypi_package artifact
 │   └── manifests/
 │       ├── mailaas.yaml.j2  # Element manifest: type reg + IAM + DP version
 │       └── example_mail.yaml.j2  # Example consumer element
@@ -171,9 +170,12 @@ your domain (referred to below as `$1`, e.g. `example.com`).
 │   └── exordos_metapaas/
 │       ├── logging.yaml
 │       └── metapaas_mail_agent.conf
-├── .github/workflows/
-│   ├── tests.yaml            # Lint (ruff) on every push
-│   └── func_tests.yaml       # Full e2e: bootstrap core + deploy + SMTP tests
+├── .github/
+│   ├── workflows/
+│   │   ├── tests.yaml        # Lint (ruff) on every push
+│   │   └── build.yml         # Build + push on a self-hosted runner, then e2e
+│   └── scripts/
+│       └── wait-for-element.sh  # Poll an element until it reports ACTIVE
 ├── pyproject.toml
 ├── tox.ini
 └── Makefile
@@ -191,17 +193,32 @@ make functional    # E2E tests (needs live stand)
 
 ### Running functional tests manually
 
-```bash
-python exordos_paas_mail/tests/functional/prepare_env.py \
-  --metapaas-dir ../exordos_metapaas \
-  --project-dir . \
-  --output-dir /tmp/mail-build \
-  --endpoint http://10.20.0.2:11010 \
-  --username admin --password <pass>
+Requires a live exordos_core + exordos_metapaas deployment with `mailaas`
+installed:
 
-# Use env vars printed by prepare_env.py, then:
-tox -e py312-functional
+```bash
+EXORDOS_ENDPOINT=http://10.20.0.2:80/api/core \
+EXORDOS_USERNAME=admin \
+EXORDOS_PASSWORD=<pass> \
+EXORDOS_MAIL_CP_URL=http://10.20.0.2:80/api/metapaas \
+make functional
 ```
+
+To build that environment from scratch — what the `build` workflow does on a
+throwaway runner:
+
+```bash
+exordos compute hypervisors init --connection-uri qemu+tcp://10.20.0.1/system
+exordos bootstrap -i latest -f -m core --pool-agent-placement local \
+  --admin-password <admin-pass> --cidr 10.20.0.0/22
+exordos e e install metapaas
+exordos e e install mailaas        # add -v <version> to pin a build
+```
+
+Wait for both elements to report `ACTIVE`
+(`.github/scripts/wait-for-element.sh mailaas`) and the suite has everything it
+needs.  To test a build of this working tree rather than the published element,
+`make build` it and `exordos push` it to a repository the core can reach first.
 
 ## Key differences from metapaas_s3
 
