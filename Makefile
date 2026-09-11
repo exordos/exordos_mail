@@ -1,40 +1,22 @@
 SHELL := bash
-SSH_KEY    ?= ~/.ssh/id_ed25519.pub
-REPOSITORY ?= http://10.20.0.1:8080/exordos-elements
-INDEX_URL  ?= http://10.20.0.1:8080/simple/
-# Pin the exact wheel version into the manifest ($metapaas.types.mail.version)
-# so the metapaas PluginReconciler performs a standard version-change upgrade
-# instead of resolving "latest". Auto-derived; override with PKG_VERSION=x.y.z.
-PKG_VERSION ?= $(shell python3 -c "import importlib.metadata as m; print(m.version('exordos_mail'))" 2>/dev/null)
+SSH_KEY ?= ~/.ssh/id_ed25519.pub
 
 all: help
 
 help:
 	@echo "build            - build the mailaas element manifest + DP image"
-	@echo "install          - install mailaas element into Core"
-	@echo "wheel            - build Python wheel for exordos_mail"
-	@echo "publish-wheel    - copy wheel to local pip index"
+	@echo "wheel            - build the exordos_mail Python wheel"
 	@echo "lint             - run ruff check"
 	@echo "format           - run ruff format"
 	@echo "test             - run unit tests via tox"
-	@echo "functional       - run functional tests (needs live stand)"
+	@echo "functional       - run functional tests (needs a live core with mailaas)"
 	@echo "typecheck        - run mypy"
 
 build:
-	exordos build -c exordos/exordos.yaml -i $(SSH_KEY) -f \
-		--manifest-var repository=$(REPOSITORY) \
-		--manifest-var index_url=$(INDEX_URL) \
-		$(if $(PKG_VERSION),--manifest-var pkg_version=$(PKG_VERSION),)
-
-install:
-	exordos em elements install output/manifests/mailaas.yaml
+	exordos build -i $(SSH_KEY) -f .
 
 wheel:
-	rm -rf build dist  # avoid stale build/lib leaking removed files into the wheel
-	python -m build --wheel
-
-publish-wheel: wheel
-	cp dist/exordos_mail-*.whl /srv/exordos-local-repo/simple/
+	tox -e wheel
 
 lint:
 	tox -e ruff-check

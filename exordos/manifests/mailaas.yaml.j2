@@ -18,9 +18,7 @@ resources:
     mail:
       name: "mail"
       element_name: "mailaas"
-      package: "exordos_mail"
-      version: "$self:version"
-      index_url: "{{ index_url | default('') }}"
+      package: "{{ artifacts.pypi_package }}"
       project_id: "4d657461-0000-0000-0000-000000000002"
 
   # Mail IAM permissions bound to the metapaas project owner role.

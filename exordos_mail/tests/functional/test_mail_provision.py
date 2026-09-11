@@ -43,11 +43,19 @@ class TestAccountCRUD:
             mail_project_id,
         )
         assert account["username"] == username
-        assert account.get("password") is None  # write-only, hidden on read
-        assert account.get("password_hash") is None  # derived, hidden on read
+        # The password is write-only, which the API spells the way core does
+        # for a secret value: the create response echoes it back to the caller
+        # that supplied it, and no read ever returns it.  The derived hash is
+        # hidden everywhere, this response included.
+        assert account.get("password_hash") is None
+
+        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
+        fetched = mail_api_client.get(collection, uuid=account["uuid"])
+        assert fetched["username"] == username
+        assert fetched.get("password") is None
+        assert fetched.get("password_hash") is None
 
         # Cleanup
-        collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
         mail_api_client.delete(collection, uuid=account["uuid"])
 
     def test_list_accounts(self, mail_api_client, mail_instance_uuid):

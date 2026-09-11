@@ -18,8 +18,7 @@ node.  No email is delivered outside the test domain: we use loopback
 submission only.
 
 Required env vars (see conftest.py):
-  EXORDOS_ENDPOINT, EXORDOS_USERNAME, EXORDOS_PASSWORD,
-  METAPAAS_USERNAME, METAPAAS_PASSWORD
+  EXORDOS_ENDPOINT, EXORDOS_USERNAME, EXORDOS_PASSWORD
 Optional:
   EXORDOS_MAIL_CP_URL   — override metapaas-cp URL
   EXORDOS_POLL_TIMEOUT  — total seconds to wait for instance ACTIVE (default 600)
@@ -141,12 +140,35 @@ def _dp_ip(mail_instance: dict) -> str:
     return ips[0]
 
 
+def _wait_for_smtp(host: str, port: int = 587, timeout: int = 180, interval: int = 3):
+    """Wait until exim4 on the dataplane answers on the submission port.
+
+    An ACTIVE instance means the core finished building the node; exim4 inside
+    it comes up a moment later.  Every test here starts by talking to that
+    port, so wait once instead of letting whichever test happens to run first
+    fail on a refused connection.
+    """
+    deadline = time.monotonic() + timeout
+    last_exc: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with smtplib.SMTP(host, port, timeout=10) as smtp:
+                smtp.ehlo()
+            return
+        except (OSError, smtplib.SMTPException) as e:
+            last_exc = e
+        time.sleep(interval)
+    pytest.fail(f"exim4 on {host}:{port} did not answer within {timeout}s: {last_exc}")
+
+
 # --- Fixtures -----------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
 def dp_host(mail_instance) -> str:
-    return _dp_ip(mail_instance)
+    host = _dp_ip(mail_instance)
+    _wait_for_smtp(host)
+    return host
 
 
 @pytest.fixture(scope="module")
