@@ -12,7 +12,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import exordos_mail.dataplane.driver as drv_module
+from unittest import mock
+
+# The existing driver invokes systemctl during import. Unit-test collection
+# must not operate on the host's services, locally or on the CI runner.
+with mock.patch("subprocess.run"):
+    import exordos_mail.dataplane.driver as drv_module
 
 
 class _Stub:

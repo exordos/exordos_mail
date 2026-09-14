@@ -173,5 +173,12 @@ deactivate
 sudo cp "$GC_PATH/etc/systemd/exordos-metapaas-mail-configure.service" $SYSTEMD_SERVICE_DIR
 sudo cp "$GC_PATH/etc/systemd/exordos-metapaas-mail-agent.service" $SYSTEMD_SERVICE_DIR
 
-# Enable DP agent (mail services start via configure service after mail.env delivery)
+# The base agent, not MailCapabilityDriver, delivers mail.env and invokes its
+# configure hook. Order that path too, without modifying the shared base image.
+sudo mkdir -p "${SYSTEMD_SERVICE_DIR}exordos-universal-agent.service.d"
+sudo cp "$GC_PATH/etc/systemd/exordos-universal-agent.service.d/20-mail-bootstrap.conf" \
+    "${SYSTEMD_SERVICE_DIR}exordos-universal-agent.service.d/20-mail-bootstrap.conf"
+
+# Keep the agent enabled for recovery; its unit waits for bootstrap to finish.
+# Mail configuration fails visibly if persistent log mounts are unavailable.
 sudo systemctl enable exordos-metapaas-mail-agent

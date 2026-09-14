@@ -3,7 +3,7 @@ name: tests
 on:
   push:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize, reopened]
 
 jobs:
   Lint:
@@ -22,3 +22,5 @@ jobs:
         run: uv tool install tox --with tox-uv
       - name: Ruff check
         run: tox -e ruff-check
+      - name: Unit tests
+        run: tox -e py312
