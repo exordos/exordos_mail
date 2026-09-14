@@ -18,7 +18,8 @@ set -eu
 set -x
 set -o pipefail
 
-source /usr/local/lib/exordos/lib_bootstrap.sh
+BOOTSTRAP_LIB=${EXORDOS_BOOTSTRAP_LIB:-/usr/local/lib/exordos/lib_bootstrap.sh}
+source "$BOOTSTRAP_LIB"
 
 # Logs live on the persistent disk (survives reboots)
 PERSISTENT_DISK=$(find_persistent_disk)
@@ -30,7 +31,10 @@ if [[ -n "$PERSISTENT_DISK" ]]; then
 fi
 
 # mail-configure is started once the control plane delivers
-# /etc/exordos_metapaas/mail.env (ConditionPathExists on the service)
-sudo systemctl enable --now exordos-metapaas-mail-configure
+# /etc/exordos_metapaas/mail.env (ConditionPathExists on the service).
+# Queue the start: configure is ordered after this bootstrap unit, so waiting
+# synchronously here would deadlock. Mount assertions keep failures visible
+# when the agent retries configuration after a failed bootstrap.
+sudo systemctl --no-block enable --now exordos-metapaas-mail-configure
 
 echo "Bootstrap completed successfully."

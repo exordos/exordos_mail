@@ -183,6 +183,41 @@ your domain (referred to below as `$1`, e.g. `example.com`).
 
 ## Development
 
+### Dataplane bootstrap ordering
+
+The image enables the mail agent without starting it. Both the agent and the
+mail configure unit use `Wants` and `After` for `exordos-bootstrap.service`:
+they wait for its job to finish, but a failed bootstrap does not disable the
+agent or prevent it from reporting configuration errors. A mail-image-only
+drop-in also orders the base `exordos-universal-agent.service` after bootstrap:
+its `RenderAgentDriver` delivers `mail.env` and invokes the configure hook.
+`MailCapabilityDriver` manages accounts and is not the configuration consumer.
+The shared base image/repository is unchanged.
+
+Bootstrap prepares `/persist`, migrates and bind-mounts `/var/log`, and then
+queues the configure service with `systemctl --no-block enable --now`. A blocking
+start here would wait for the bootstrap unit itself and deadlock. The shared
+`persist_migrate_complete` helper writes a marker and returns; it does not reboot.
+
+The configure unit retains the `mail.env` condition for delayed delivery and
+asserts that **both** `/persist` and `/var/log` are mount points. A missing mount
+fails the configuration action instead of silently skipping it or configuring
+mail on the root filesystem. Once storage is repaired, the agent can retry the
+same configuration action without being re-enabled. There is no automatic disk
+repair in this change. The shared bootstrap runner's `__done` file is not a
+success gate: that runner currently does not propagate child script failures.
+
+`RequiresMountsFor=/persist /var/log` also makes configure wait for the generated
+mount units on subsequent boots. The mount assertions remain necessary on first
+boot, before bootstrap has installed the fstab entries. These hard mount
+dependencies apply only to configure, never to either recovery agent.
+
+The bootstrap regression tests run the real dataplane script against isolated
+command stubs. Unit contracts cover ordering, mount assertions and recovery;
+these tests do not replace a first-boot test under systemd on an isolated Realm.
+
+### Local checks
+
 ```bash
 make test          # Unit tests via tox
 make lint          # ruff check
