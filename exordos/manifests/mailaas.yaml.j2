@@ -93,7 +93,7 @@ resources:
     exim4_1:
       name: "exim4_1"
       description: "12345678-c625-4fee-81d5-f691897b8142"
-      image: "{{ repository | default('https://repo.exordos.com/exordos-elements') }}/mailaas/{{ version }}/images/exordos-metapaas-mail-dp.raw.zst"
+      image: "{{ images.exordos_metapaas_mail_dp }}"
 
 exports:
   exim4_1:
