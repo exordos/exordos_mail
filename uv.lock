@@ -577,7 +577,7 @@ wheels = [
 
 [[package]]
 name = "exordos"
-version = "3.2.9"
+version = "3.2.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bazooka" },
@@ -598,9 +598,9 @@ dependencies = [
     { name = "ruamel-yaml" },
     { name = "simple-term-menu" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/d6/8bb09d4cbc8f2e7efd7a84b92f5525218f5e832f36570c84463471ce0c60/exordos-3.2.9.tar.gz", hash = "sha256:5e7b60f8ded7847b6e30e5b709843a4533ce6c666daa536961b46a5c192cf8c9", size = 513588, upload-time = "2026-09-16T11:21:17.789Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b2/1e/40a4f623b3a62b7f81472a438a47196b5c3c245097a2e2eb8aa64fcfb04c/exordos-3.2.13.tar.gz", hash = "sha256:35cefd0721cafb89cdcd499bfc183fbe5d7d36cd6baf997829730dfeb196bf0e", size = 523893, upload-time = "2026-09-23T15:10:36.514Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/2f/477c800fa1027cc048c241dda14a804587ed7833e23434e7d017a235326b/exordos-3.2.9-py3-none-any.whl", hash = "sha256:400f8abd5188bb447c55d490f8870918f2847fc76a182907f013ee2843f7c85b", size = 401464, upload-time = "2026-09-16T11:21:16.007Z" },
+    { url = "https://files.pythonhosted.org/packages/69/d8/b34172aca44805382d399894e32bb12dd82fe0658c2455e5b38389e8fb6b/exordos-3.2.13-py3-none-any.whl", hash = "sha256:eaabc6bd8667112e4873e5f8f4e3e087b0444f47153fffff4dbd6ca7859a11f0", size = 411808, upload-time = "2026-09-23T15:10:34.573Z" },
 ]
 
 [[package]]
@@ -2403,7 +2403,7 @@ wheels = [
 
 [[package]]
 name = "tox"
-version = "4.61.4"
+version = "4.63.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cachetools" },
@@ -2419,9 +2419,9 @@ dependencies = [
     { name = "typing-extensions", marker = "python_full_version < '3.13'" },
     { name = "virtualenv" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/33/57/5a24f6f81ee81a25d34773045db61ddef3a76ed43e6fbd0fca2657678ad6/tox-4.61.4.tar.gz", hash = "sha256:d3fa82dc2fe847fe45b576ed0614e850a674aadec3a664f409e2bf295c473e20", size = 308140, upload-time = "2026-09-09T01:37:12.183Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/93/ce52def83be73dcb86c0c5985f40808917f09828c1616d4018206c3dbba3/tox-4.63.0.tar.gz", hash = "sha256:fb7105ef125b371e31797cfa615e5a160de3d8ef29b86dca7fcbd9048da3a9d8", size = 310965, upload-time = "2026-09-19T16:45:35.275Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/4e/ca/1c3c0e8c21caa393648ec6d62ee14aa802ea0d94553ceb2dd71f50b85a10/tox-4.61.4-py3-none-any.whl", hash = "sha256:1ec27a26f485c408a3f128722959086099894955d1eb74ab973e233bd362e99e", size = 228143, upload-time = "2026-09-09T01:37:10.621Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/4d/d0e37d254b4ad5492d63ea60981365a5122261b5954a9d952d8b15283e26/tox-4.63.0-py3-none-any.whl", hash = "sha256:e8c560a9124e127c5e0547912d2ae1ef948dbba2fdea0b8d506e609a126b2e47", size = 229324, upload-time = "2026-09-19T16:45:33.829Z" },
 ]
 
 [[package]]
