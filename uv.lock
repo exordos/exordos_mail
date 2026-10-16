@@ -640,7 +640,7 @@ test = [
 requires-dist = [
     { name = "coverage", marker = "extra == 'test'", specifier = ">=4.0" },
     { name = "exordos", marker = "extra == 'test'", specifier = ">=2.0.0,<4.0.0" },
-    { name = "exordos-metapaas", specifier = ">=0.0.1" },
+    { name = "exordos-metapaas", specifier = ">=1.2.7" },
     { name = "gcl-iam", specifier = ">=1.4.0,<2.0.0" },
     { name = "gcl-looper", specifier = ">=1.2.3,<2.0.0" },
     { name = "gcl-sdk", specifier = ">=3.6.0,<4.0.0" },
@@ -660,7 +660,7 @@ provides-extras = ["dev", "test", "ruff", "mypy"]
 
 [[package]]
 name = "exordos-metapaas"
-version = "1.2.3"
+version = "1.2.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bjoern" },
@@ -672,9 +672,9 @@ dependencies = [
     { name = "requests" },
     { name = "restalchemy" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/e0/5ffa1e838e25463cfb09f7a3d0926b7d8155f0f979aa40c001435ab58867/exordos_metapaas-1.2.3.tar.gz", hash = "sha256:388d2e3eb6a2021f29e006bedc493dce255d500cbb6577281ec55ab4e88d5698", size = 200665, upload-time = "2026-09-07T06:37:52.374Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0b/f5/e34df2004dfa2128a2e5bcca4bc09d8ec46e7c5737a42b31531724e12c8c/exordos_metapaas-1.2.7.tar.gz", hash = "sha256:28d004e2cc184808171a10406961e93d77f8c8f53a0881322c4a910fa3c70308", size = 205137, upload-time = "2026-10-16T08:31:29.244Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/e9/cfcd9ddcca4b5be6689c6383d4d2db1d91e20991d62f6693bff5e728f04c/exordos_metapaas-1.2.3-py3-none-any.whl", hash = "sha256:653cc86deb52a65ae3d4b743564ed726d7c88be94dbc21dc28a0ed94f2f81a62", size = 49679, upload-time = "2026-09-07T06:37:51.002Z" },
+    { url = "https://files.pythonhosted.org/packages/2e/ba/b3acd982da552663412c7deeb25e0db504382a90214c014525ffb585f4bd/exordos_metapaas-1.2.7-py3-none-any.whl", hash = "sha256:4fbce4e3b20510321c3b71897885dc7b1b307118146b19cd700ea46d76cb6c9b", size = 57401, upload-time = "2026-10-16T08:31:27.934Z" },
 ]
 
 [[package]]
