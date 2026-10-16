@@ -14,11 +14,11 @@
 
 import enum
 
+from exordos_metapaas.common import audit as audit_models
 from gcl_sdk.agents.universal.dm import models as ua_models
 from passlib.hash import sha512_crypt as _sha512_crypt
 from restalchemy.dm import filters as dm_filters
 from restalchemy.dm import models, properties, relationships, types
-from restalchemy.storage.sql import orm
 
 from exordos_mail import utils as u
 
@@ -39,10 +39,12 @@ class MailVersion(
     models.ModelWithUUID,
     models.ModelWithNameDesc,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
     ua_models.TargetResourceMixin,
 ):
+    __audit_service_name__ = "mail"
     __tablename__ = "mail_versions"
+    __audit_resource_type__ = "mail_versions"
 
     image = properties.property(types.String(max_length=2048))
 
@@ -52,9 +54,11 @@ class MailInstance(
     models.ModelWithNameDesc,
     models.ModelWithProject,
     models.ModelWithTimestamp,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
+    __audit_service_name__ = "mail"
     __tablename__ = "mail_instances"
+    __audit_resource_type__ = "mail_instances"
 
     name = properties.property(types.String(min_length=1, max_length=255))
     domain = properties.property(
@@ -103,9 +107,11 @@ class MailAccount(
     models.ModelWithTimestamp,
     models.ModelWithProject,
     ua_models.TargetResourceMixin,
-    orm.SQLStorableMixin,
+    audit_models.AuditLogSQLStorableMixin,
 ):
+    __audit_service_name__ = "mail"
     __tablename__ = "mail_accounts"
+    __audit_resource_type__ = "mail_accounts"
 
     instance = relationships.relationship(MailInstance, required=True, read_only=True)
     username = properties.property(
