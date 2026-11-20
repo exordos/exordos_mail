@@ -23,11 +23,22 @@ class MailAccountRoute(routes.Route):
     __controller__ = controllers.MailAccountController
 
 
+class MailboxRoute(routes.Route):
+    __controller__ = controllers.MailboxController
+    __allow_methods__: ClassVar[list[str]] = [
+        routes.GET,
+        routes.FILTER,
+        routes.CREATE,
+        routes.UPDATE,
+    ]
+
+
 class MailInstanceRoute(routes.Route):
     __controller__ = controllers.MailInstanceController
 
     # /v1/types/mail/instances/<uuid>/accounts/[<uuid>]
     accounts = routes.route(MailAccountRoute, resource_route=True)
+    mailboxes = routes.route(MailboxRoute, resource_route=True)
 
 
 class MailVersionRoute(routes.Route):

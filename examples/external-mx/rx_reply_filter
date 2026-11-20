@@ -1,0 +1,3 @@
+# This client only talks to the private RX. Keep accepted mail for retry and
+# preserve the RX diagnosis in the queue log for the operator.
+/^5[0-9][0-9]([ -])([245]\.[0-9]+\.[0-9]+ )?(.*)$/ 450${1}4.3.0 RX rejected accepted mail: ${3}

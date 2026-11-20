@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Renew Exordos Mail TLS certificates
+After=exordos-metapaas-mail-configure.service
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+ConditionPathExists=/etc/exordos_metapaas/mail.env
+ConditionPathExists=/persist/mail/tls/ca.crt
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/exordos_metapaas/mail.env
+ExecStart=/usr/bin/flock /run/lock/exordos-mail-configure.lock /usr/local/lib/exordos-mail/mailbox-tls ${MAIL_DOMAIN} /persist/mail/tls --reload

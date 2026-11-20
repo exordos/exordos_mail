@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail SMTP authentication
+RequiresMountsFor=/persist
+
+[Service]
+Type=simple
+Restart=on-failure
+RuntimeDirectory=exordos-mail-tx-auth
+RuntimeDirectoryMode=0755
+ExecStart=/usr/sbin/dovecot -F -c /usr/local/share/exordos-mail/dovecot-auth.conf
+ExecStartPost=/usr/bin/timeout 30 /bin/bash -c 'until test -S /run/exordos-mail-tx-auth/auth-client; do sleep 0.2; done'

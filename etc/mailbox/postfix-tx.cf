@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+
+compatibility_level = 3.6
+myhostname = mail.@DOMAIN@
+mydestination =
+inet_interfaces = all
+queue_directory = /persist/mail/tx/postfix
+data_directory = /persist/mail/tx/data
+mail_owner = exordos-mail-tx
+transport_maps = hash:/etc/postfix-tx/transport
+disable_mime_output_conversion = yes
+smtp_tls_security_level = may
+smtp_tls_CAfile = /persist/mail/tls/trust.crt
+smtp_tls_policy_maps = hash:/etc/postfix-tx/tls-policy
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = /run/exordos-mail-tx-auth/auth-client
+smtpd_sasl_security_options = noanonymous
+smtpd_relay_restrictions = permit_sasl_authenticated,reject
+smtpd_tls_security_level = encrypt
+smtpd_tls_auth_only = yes
+smtpd_tls_cert_file = /persist/mail/tls/tx.crt
+smtpd_tls_key_file = /persist/mail/tls/tx.key
+smtpd_milters = unix:/run/exordos-mail-tx-filter/milter.sock
+milter_default_action = tempfail
+message_size_limit = 26214400
+enable_long_queue_ids = yes

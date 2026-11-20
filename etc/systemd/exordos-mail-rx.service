@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail Postfix RX
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart=/usr/sbin/postfix start-fg
+ExecStartPost=/usr/bin/timeout 30 /bin/bash -c 'until (exec 3<>/dev/tcp/127.0.0.1/2525) 2>/dev/null; do sleep 0.2; done'
+ExecReload=/usr/sbin/postfix reload

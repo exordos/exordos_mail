@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail Postfix TX
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+Requires=exordos-mail-tx-auth.service exordos-mail-tx-filter.service
+After=exordos-mail-tx-auth.service exordos-mail-tx-filter.service
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart=/usr/sbin/postfix -c /etc/postfix-tx start-fg
+ExecStartPost=/usr/bin/timeout 30 /bin/bash -c 'until (exec 3<>/dev/tcp/127.0.0.1/587) 2>/dev/null; do sleep 0.2; done'
+ExecReload=/usr/sbin/postfix -c /etc/postfix-tx reload

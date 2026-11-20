@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: Apache-2.0
+
+name: Documentation
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - README.md
+      - 'examples/external-mx/README.md'
+      - mkdocs.yml
+      - tox.ini
+      - pyproject.toml
+      - uv.lock
+      - .markdownlint.yaml
+      - .github/workflows/docs.yml
+  push:
+    branches: [master]
+    paths:
+      - 'docs/**'
+      - README.md
+      - 'examples/external-mx/README.md'
+      - mkdocs.yml
+      - tox.ini
+      - pyproject.toml
+      - uv.lock
+      - .markdownlint.yaml
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build_docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - run: uv tool install tox --with tox-uv
+      - name: Build docs
+        run: tox -e docs-build
+      - uses: DavidAnson/markdownlint-cli2-action@v24
+        with:
+          globs: |
+            README.md
+            docs/**/*.md
+            examples/external-mx/README.md
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/master' && github.event.repository.has_pages
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy_docs:
+    if: github.ref == 'refs/heads/master' && github.event.repository.has_pages
+    needs: build_docs
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

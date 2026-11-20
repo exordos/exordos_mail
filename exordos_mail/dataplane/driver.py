@@ -13,21 +13,33 @@
 #    under the License.
 from __future__ import annotations
 
+import fcntl
+import json
 import logging
 import os
 import re
 import subprocess
+from pathlib import Path
 from typing import ClassVar
 
 from gcl_sdk.agents.universal import constants as c
+from gcl_sdk.agents.universal.drivers import exceptions as driver_exc
 from gcl_sdk.agents.universal.drivers import meta
 from gcl_sdk.infra import constants as pc
 from restalchemy.dm import properties
 from restalchemy.dm import types as ra_types
 
 from exordos_mail import constants
+from exordos_mail.controlplane.dm.models import MAIL_MODES, MailMode
+from exordos_mail.dataplane import mailbox
 
 LOG = logging.getLogger(__name__)
+CONFIGURE_SCRIPT = Path("/usr/local/lib/exordos-mail/mailbox-configure")
+MODE_FILE = Path("/run/exordos-mail-mode")
+CONFIGURE_LOCK = Path("/run/lock/exordos-mail-configure.lock")
+CONFIGURE_SERVICE = "exordos-metapaas-mail-configure.service"
+TX_SERVICES = ("tx", "tx-auth", "tx-filter")
+MAILBOX_SERVICES = ("rx", "cyrus", "saslauthd", "rspamd", "valkey")
 
 
 def _write_file_atomic(path: str, content: str) -> bool:
@@ -40,10 +52,7 @@ def _write_file_atomic(path: str, content: str) -> bool:
     except FileNotFoundError:
         pass
 
-    tmp = path + ".tmp"
-    with open(tmp, "w") as f:
-        f.write(content)
-    os.rename(tmp, path)
+    mailbox.write_atomic(Path(path), content, group="Debian-exim")
     return True
 
 
@@ -53,9 +62,7 @@ def _reload_exim4() -> None:
         LOG.info("exim4 reloaded")
     except Exception:
         LOG.warning("Failed to reload exim4; attempting restart", exc_info=True)
-
-
-subprocess.run(["systemctl", "restart", "exim4"], check=False, timeout=30)
+        subprocess.run(["systemctl", "restart", "exim4"], check=True, timeout=30)
 
 
 class MailInstance(meta.MetaDataPlaneModel):
@@ -76,6 +83,10 @@ class MailInstance(meta.MetaDataPlaneModel):
         required=True,
     )
     accounts = properties.property(ra_types.Dict(), default=dict)
+    mode = properties.property(
+        ra_types.Enum(MAIL_MODES), default=MailMode.SMTP_ONLY.value
+    )
+    mailboxes = properties.property(ra_types.Dict(), default=dict)
     status = properties.property(
         ra_types.Enum([s.value for s in pc.InstanceStatus]),
         default=pc.InstanceStatus.ACTIVE.value,
@@ -86,7 +97,7 @@ class MailInstance(meta.MetaDataPlaneModel):
     dkim_public_key = properties.property(ra_types.String(max_length=4096), default="")
     dkim_selector = properties.property(ra_types.String(max_length=255), default="")
 
-    _meta_fields: ClassVar[set[str]] = {"uuid", "name", "domain"}
+    _meta_fields: ClassVar[set[str]] = {"uuid", "name", "domain", "mode"}
 
     def get_meta_model_fields(self) -> set[str] | None:
         return self._meta_fields
@@ -104,13 +115,26 @@ class MailInstance(meta.MetaDataPlaneModel):
             return password_hash[password_hash.index("}") + 1 :]
         return password_hash
 
-    def _build_exim4_passwd(self) -> str:
+    def _build_exim4_passwd(self, *, safe: bool = False) -> str:
         lines = []
+        seen = set()
         for username, info in self.accounts.items():
             if not info.get("active", True):
                 continue
             password_hash = self._strip_dovecot_prefix(info.get("password_hash", ""))
-            lines.append(f"{username}@{self.domain}:{password_hash}")
+            if safe and (
+                not re.fullmatch(r"[^:\s]+", username)
+                or not re.fullmatch(r"[^:\s]+", password_hash)
+            ):
+                # Malformed legacy entries have no usable login.
+                continue
+            login = f"{username}@{self.domain}"
+            if safe:
+                login = login.lower()
+                if login in seen:
+                    continue
+                seen.add(login)
+            lines.append(f"{login}:{password_hash}")
         return "\n".join(lines) + "\n" if lines else ""
 
     # ------------------------------------------------------------------
@@ -128,8 +152,11 @@ class MailInstance(meta.MetaDataPlaneModel):
         return "".join(chunks).strip()
 
     def _read_dkim_public_key(self) -> str:
+        dkim_file = constants.EXIM4_DKIM_TXT_FILE
+        if CONFIGURE_SCRIPT.exists() or self.mode == MailMode.MAILBOX.value:
+            dkim_file = str(mailbox.STATE.parent / "tx" / "platform.txt")
         try:
-            with open(constants.EXIM4_DKIM_TXT_FILE) as f:
+            with open(dkim_file) as f:
                 return self._parse_dkim_txt(f.read())
         except FileNotFoundError:
             return ""
@@ -151,7 +178,68 @@ class MailInstance(meta.MetaDataPlaneModel):
 
     # -- MetaDataPlaneModel interface --
 
+    def _require_configured_mode(self, *, retry: bool = False) -> None:
+        try:
+            if MODE_FILE.read_text().strip() == self.mode:
+                return
+        except FileNotFoundError:
+            pass
+        if retry:
+            configured = Path(constants.MAIL_ENV_FILE).read_text()
+            desired = next(
+                (
+                    line.partition("=")[2]
+                    for line in configured.splitlines()
+                    if line.startswith("MAIL_MODE=")
+                ),
+                MailMode.SMTP_ONLY.value,
+            )
+            if desired == self.mode:
+                subprocess.run(
+                    ["systemctl", "restart", CONFIGURE_SERVICE], check=True, timeout=180
+                )
+                return
+        raise driver_exc.InvalidDataPlaneObjectError(obj={"uuid": str(self.uuid)})
+
     def dump_to_dp(self) -> None:
+        if CONFIGURE_SCRIPT.exists():
+            self._require_configured_mode(retry=True)
+            with CONFIGURE_LOCK.open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                self._require_configured_mode()
+                target = mailbox.STATE / "target.json"
+                target.unlink(missing_ok=True)
+                if self.mode == MailMode.MAILBOX.value:
+                    mailbox.apply(self.domain, self.accounts, self.mailboxes)
+                    subprocess.run(
+                        ["systemctl", "reload-or-restart", "exordos-mail-rx.service"],
+                        check=True,
+                        timeout=45,
+                    )
+                else:
+                    mailbox.write_atomic(
+                        mailbox.STATE / "tx.passwd",
+                        self._build_exim4_passwd(safe=True),
+                        group="dovecot",
+                    )
+                mailbox.write_atomic(
+                    target,
+                    json.dumps(
+                        {
+                            "format": mailbox.TARGET_FORMAT,
+                            "mode": self.mode,
+                            "accounts": self.accounts,
+                            "mailboxes": self.mailboxes,
+                        }
+                    ),
+                    0o600,
+                )
+                self._restore_unified()
+            return
+        if self.mode == MailMode.MAILBOX.value:
+            raise RuntimeError(
+                "The mail image must be upgraded before enabling mailboxes"
+            )
         exim4_changed = _write_file_atomic(
             constants.EXIM4_PASSWD_FILE, self._build_exim4_passwd()
         )
@@ -159,6 +247,14 @@ class MailInstance(meta.MetaDataPlaneModel):
             _reload_exim4()
 
     def restore_from_dp(self) -> None:
+        if CONFIGURE_SCRIPT.exists():
+            with CONFIGURE_LOCK.open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_SH)
+                self._require_configured_mode()
+                self._restore_unified()
+            return
+        if self.mode == MailMode.MAILBOX.value:
+            raise driver_exc.InvalidDataPlaneObjectError(obj={"uuid": str(self.uuid)})
         actual = self._read_exim4_passwd()
         self.accounts = {}
         for full_addr, line in actual.items():
@@ -170,6 +266,58 @@ class MailInstance(meta.MetaDataPlaneModel):
                     "password_hash": password_hash,
                     "active": True,
                 }
+        self.dkim_public_key = self._read_dkim_public_key()
+        self.dkim_selector = constants.DKIM_SELECTOR if self.dkim_public_key else ""
+
+    def _restore_unified(self) -> None:
+        snapshot = mailbox.STATE / "target.json"
+        try:
+            applied = json.loads(snapshot.read_text())
+        except FileNotFoundError:
+            applied = {}
+        if (
+            applied.get("format") != mailbox.TARGET_FORMAT
+            or applied.get("mode") != self.mode
+        ):
+            raise driver_exc.InvalidDataPlaneObjectError(obj={"uuid": str(self.uuid)})
+        self.accounts = applied["accounts"]
+        self.mailboxes = applied["mailboxes"]
+        if self.mode == MailMode.SMTP_ONLY.value:
+            try:
+                passwd = (mailbox.STATE / "tx.passwd").read_text()
+            except FileNotFoundError:
+                passwd = None
+            if passwd != self._build_exim4_passwd(safe=True):
+                raise driver_exc.InvalidDataPlaneObjectError(
+                    obj={"uuid": str(self.uuid)}
+                )
+        else:
+            try:
+                map_size = (mailbox.STATE / "recipients.db").stat().st_size
+            except FileNotFoundError:
+                map_size = 0
+            if not map_size:
+                raise driver_exc.InvalidDataPlaneObjectError(
+                    obj={"uuid": str(self.uuid)}
+                )
+        units = (
+            (*TX_SERVICES, *MAILBOX_SERVICES)
+            if self.mode == MailMode.MAILBOX.value
+            else TX_SERVICES
+        )
+        services = [f"exordos-mail-{name}.service" for name in units]
+        state = subprocess.run(
+            ["systemctl", "is-active", *services],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        self.status = (
+            pc.InstanceStatus.ACTIVE.value
+            if state.stdout.splitlines() == ["active"] * len(services)
+            else pc.InstanceStatus.ERROR.value
+        )
         self.dkim_public_key = self._read_dkim_public_key()
         self.dkim_selector = constants.DKIM_SELECTOR if self.dkim_public_key else ""
 

@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+
+site_name: Exordos Mail
+site_url: https://exordos.github.io/exordos_mail/
+repo_name: exordos_mail
+repo_url: https://github.com/exordos/exordos_mail
+edit_uri: edit/master/docs/
+copyright: Copyright &copy; 2026 Genesis Corporation
+use_directory_urls: false
+
+theme:
+  name: zensical
+  variant: modern
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: lucide/sun
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: lucide/moon
+        name: Switch to light mode
+
+extra:
+  alternate:
+    - name: English
+      link: ./index.html
+      lang: en
+    - name: Русский
+      link: ./index.ru.html
+      lang: ru
+
+extra_javascript:
+  - javascripts/i18n-nav.js
+
+markdown_extensions:
+  - pymdownx.superfences
+  - toc:
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+      permalink: true
+
+nav:
+  - Overview: index.md
+  - Usage:
+    - Deployment: usage/deployment.md
+    - External MX: usage/external-mx.md
+    - Operations: usage/operations.md
+  - API: api/reference.md
+  - Developers: developers/guide.md

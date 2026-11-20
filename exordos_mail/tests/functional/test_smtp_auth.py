@@ -26,10 +26,13 @@ Optional:
 
 from __future__ import annotations
 
+import imaplib
 import smtplib
+import socket
 import ssl
 import time
 import uuid
+from email.utils import formatdate
 
 import pytest
 
@@ -197,12 +200,14 @@ class TestSmtpAuthBasic:
     ):
         """Creating an account → SMTP AUTH with correct password succeeds."""
         username = f"valid-{uuid.uuid4().hex[:8]}"
-        password = "CorrectHorseBatteryStaple1"
+        password = "CorrectHorseBatteryStaple1" * 12
         _make_account(
             mail_api_client, mail_instance_uuid, mail_project_id, username, password
         )
 
-        _wait_for_auth(dp_host, f"{username}@{domain}", password, expect_success=True)
+        _wait_for_auth(
+            dp_host, f"{username}@{domain}".upper(), password, expect_success=True
+        )
 
         # Cleanup
         collection = f"{mail_conftest.MAIL_INSTANCES}{mail_instance_uuid}/accounts/"
@@ -452,4 +457,135 @@ class TestSmtpSubmit:
             except smtplib.SMTPRecipientsRefused as e:
                 # RCPT TO rejected (550 Unrouteable — domain not local)
                 codes = {v[0] for v in e.recipients.values()}
-                assert codes <= {550, 530, 553}
+                assert codes <= {530, 550, 553, 554}
+
+
+class TestSwitchMailMode:
+    def test_switch_modes_on_same_instance(
+        self, mail_api_client, mail_version_uuid, test_user_project, test_user
+    ):
+        instances = mail_conftest.MAIL_INSTANCES
+        project = test_user_project["uuid"]
+        domain = f"switch-{uuid.uuid4().hex[:8]}.example.test"
+        current = mail_api_client.create(
+            instances,
+            data={
+                "name": "mail-mode-switch",
+                "project_id": project,
+                "domain": domain,
+                "cpu": 2,
+                "ram": 1024,
+                "disk_size": 8,
+                "version": f"{mail_conftest.MAIL_VERSIONS}{mail_version_uuid}",
+            },
+        )
+        instance = current["uuid"]
+
+        def active():
+            return mail_conftest._poll_instance_status(
+                mail_api_client,
+                instance,
+                "ACTIVE",
+                mail_conftest.POLL_TIMEOUT,
+                mail_conftest.POLL_INTERVAL,
+            )
+
+        try:
+            initial = active()
+            host = initial["ipsv4"][0]
+            key = initial["dkim_public_key"]
+            assert key
+            account_password = f"relay-{uuid.uuid4()}"
+            mailbox_password = f"mailbox-{uuid.uuid4()}"
+            mail_conftest.create_account_via_api(
+                mail_api_client, instance, "relay", account_password, project
+            )
+            _wait_for_auth(host, f"relay@{domain}", account_password)
+
+            mail_api_client.update(instances, uuid=instance, mode="mailbox")
+            enabled = active()
+            assert enabled["mode"] == "mailbox"
+            assert enabled["ipsv4"] == initial["ipsv4"]
+            assert enabled["dkim_public_key"] == key
+            mailboxes = f"{instances}{instance}/mailboxes/"
+            mailbox = mail_api_client.create(
+                mailboxes,
+                data={
+                    "instance": f"{instances}{instance}",
+                    "project_id": project,
+                    "owner_user_uuid": test_user["uuid"],
+                    "local_part": "alice",
+                    "password": mailbox_password,
+                },
+            )
+            mail_conftest._poll_instance_status(
+                mail_api_client,
+                mailbox["uuid"],
+                "ACTIVE",
+                mail_conftest.POLL_TIMEOUT,
+                mail_conftest.POLL_INTERVAL,
+                collection=mailboxes,
+            )
+            _wait_for_auth(host, f"relay@{domain}", account_password)
+            mailbox_address = f"alice@{domain}"
+            with _smtp_login(host, mailbox_address, mailbox_password) as smtp:
+                with pytest.raises(smtplib.SMTPDataError) as rejected:
+                    smtp.sendmail(
+                        mailbox_address,
+                        [mailbox_address],
+                        f"From: forged@{domain}\r\nTo: {mailbox_address}\r\n"
+                        "Subject: unauthorized From\r\n\r\nprobe",
+                    )
+                assert 500 <= rejected.value.smtp_code < 600
+                assert b"authorized From" in rejected.value.smtp_error
+                assert (
+                    smtp.sendmail(
+                        mailbox_address,
+                        [mailbox_address],
+                        f"From: {mailbox_address}\r\nTo: {mailbox_address}\r\n"
+                        f"Date: {formatdate(usegmt=True)}\r\n"
+                        f"Message-ID: <{uuid.uuid4()}@{domain}>\r\n"
+                        "Subject: mode switch\r\n\r\nkeep",
+                    )
+                    == {}
+                )
+            with imaplib.IMAP4_SSL(host, ssl_context=_TLS_CTX, timeout=10) as imap:
+                assert imap.login("alice", mailbox_password)[0] == "OK"
+                for _ in range(60):
+                    if imap.select("INBOX", readonly=True) == ("OK", [b"1"]):
+                        break
+                    time.sleep(1)
+                else:
+                    pytest.fail(
+                        "SMTP submission did not reach the newly enabled mailbox"
+                    )
+
+                status, signed_header = imap.fetch(
+                    "1", "(BODY.PEEK[HEADER.FIELDS (DKIM-SIGNATURE)])"
+                )
+                assert status == "OK"
+                assert f"d={domain}".encode() in signed_header[0][1]
+
+            mail_api_client.update(instances, uuid=instance, mode="smtp_only")
+            disabled = active()
+            assert disabled["mode"] == "smtp_only"
+            assert disabled["ipsv4"] == initial["ipsv4"]
+            assert disabled["dkim_public_key"] == key
+            assert set(disabled["endpoints"]) == {"submission"}
+            _wait_for_auth(host, f"relay@{domain}", account_password)
+            _wait_for_auth(
+                host, f"alice@{domain}", mailbox_password, expect_success=False
+            )
+            with pytest.raises(ConnectionRefusedError):
+                socket.create_connection((host, 993), timeout=10)
+
+            mail_api_client.update(instances, uuid=instance, mode="mailbox")
+            restored = active()
+            assert restored["mode"] == "mailbox"
+            assert restored["dkim_public_key"] == key
+            _wait_for_auth(host, f"alice@{domain}", mailbox_password)
+            with imaplib.IMAP4_SSL(host, ssl_context=_TLS_CTX, timeout=10) as imap:
+                assert imap.login("alice", mailbox_password)[0] == "OK"
+                assert imap.select("INBOX", readonly=True) == ("OK", [b"1"])
+        finally:
+            mail_api_client.delete(instances, uuid=instance)

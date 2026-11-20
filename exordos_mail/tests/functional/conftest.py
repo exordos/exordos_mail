@@ -231,7 +231,7 @@ def mail_api_client(
 
 @pytest.fixture(scope="session")
 def mail_version_uuid(mail_api_client) -> str:
-    """Get the first registered mail version.
+    """Get the registered SMTP-only mail version.
 
     The versions live in the metapaas project, which is the project the test
     user is scoped to and owns — the same owner role that carries every other
@@ -239,9 +239,10 @@ def mail_version_uuid(mail_api_client) -> str:
     service account (and no reading of its generated password) is needed.
     """
     versions = mail_api_client.filter(MAIL_VERSIONS)
-    if not versions:
-        pytest.skip("No mail versions registered — is mailaas element installed?")
-    return versions[0]["uuid"]
+    for version in versions:
+        if version["name"] == "exim4_1":
+            return version["uuid"]
+    pytest.skip("No SMTP-only mail version registered — is mailaas element installed?")
 
 
 # --- Mail instance ---
@@ -255,7 +256,7 @@ def mail_instance(mail_api_client, mail_version_uuid, test_user_project) -> dict
         "project_id": test_user_project["uuid"],
         "domain": f"test-{sys_uuid.uuid4().hex[:6]}.example.com",
         "cpu": 1,
-        "ram": 1024,
+        "ram": 512,
         "disk_size": 10,
         "version": f"{MAIL_VERSIONS}{mail_version_uuid}",
     }
@@ -275,14 +276,22 @@ def mail_instance(mail_api_client, mail_version_uuid, test_user_project) -> dict
         LOG.exception("Failed to clean up mail instance %s", instance_uuid)
 
 
-def _poll_instance_status(client, instance_uuid, target_status, timeout, interval):
+def _poll_instance_status(
+    client,
+    instance_uuid,
+    target_status,
+    timeout,
+    interval,
+    *,
+    collection=MAIL_INSTANCES,
+):
     start = last_report = time.monotonic()
     deadline = start + timeout
     last_status = ""
     last_error: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            instance = client.get(MAIL_INSTANCES, uuid=instance_uuid)
+            instance = client.get(collection, uuid=instance_uuid)
         except TRANSIENT_API_ERRORS as exc:
             # This fixture is session-scoped: one unlucky request would fail
             # every test in the run.  Keep polling until the deadline and

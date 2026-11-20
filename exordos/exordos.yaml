@@ -16,7 +16,7 @@ build:
   deps:
     - dst: /opt/exordos_metapaas
       path:
-        src: ../../exordos_mail
+        src: ..
       exclude:
         - .venv
         - .tox

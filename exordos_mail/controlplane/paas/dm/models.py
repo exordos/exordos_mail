@@ -37,6 +37,10 @@ class MailInstanceNode(
     name = properties.property(ra_types.String(min_length=1, max_length=64))
     domain = properties.property(ra_types.String(min_length=1, max_length=255))
     accounts = properties.property(ra_types.Dict())
+    mode = properties.property(
+        ra_types.Enum(models.MAIL_MODES), default=models.MailMode.SMTP_ONLY.value
+    )
+    mailboxes = properties.property(ra_types.Dict(), default=dict)
     # DKIM facts reported back from the data plane (read-only outputs). Kept
     # out of the target fields so they don't drive reconciliation; surfaced to
     # the user-facing MailInstance by the builder.
@@ -48,14 +52,10 @@ class MailInstanceNode(
         return "mail_instance_node"
 
     def get_resource_target_fields(self) -> tp.Collection[str]:
-        return frozenset(
-            (
-                "uuid",
-                "name",
-                "domain",
-                "accounts",
-            )
-        )
+        fields = {"uuid", "name", "domain", "accounts"}
+        if self.mode == models.MailMode.MAILBOX.value:
+            fields.update({"mode", "mailboxes"})
+        return frozenset(fields)
 
 
 class MailInstance(
@@ -72,12 +72,7 @@ class MailInstance(
         return "mail_instance"
 
     def get_resource_target_fields(self) -> tp.Collection[str]:
-        return frozenset(
-            (
-                "uuid",
-                "name",
-            )
-        )
+        return frozenset({"uuid", "name", "mode"})
 
     def get_actual_nodeset(self):
         res = ua_models.Resource.objects.get_one(
