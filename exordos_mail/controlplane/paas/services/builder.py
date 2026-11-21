@@ -20,6 +20,7 @@ from gcl_sdk.agents.universal.dm import models as ua_models
 from gcl_sdk.paas.services import builder
 from restalchemy.storage import exceptions as storage_exceptions
 
+from exordos_mail.controlplane.dm.models import Mailbox, MailMode, MailStatus
 from exordos_mail.controlplane.paas.dm import models
 
 LOG = logging.getLogger(__name__)
@@ -74,6 +75,12 @@ class MailInstanceBuilder(PaaSBuilder):
             return []
 
         accounts = self._get_accounts(instance)
+        mailboxes = {}
+        if instance.mode == MailMode.MAILBOX.value:
+            mailboxes = {
+                mailbox.local_part: mailbox.agent_spec()
+                for mailbox in instance.get_mailboxes()
+            }
         # Mail is always single-node
         node_uuid = sys_uuid.UUID(nodes_by_idx[0])
         return [
@@ -82,27 +89,46 @@ class MailInstanceBuilder(PaaSBuilder):
                 name=instance.name,
                 domain=instance.domain,
                 accounts=accounts,
+                mode=instance.mode,
+                mailboxes=mailboxes,
                 dkim_public_key=instance.dkim_public_key,
                 dkim_selector=instance.dkim_selector,
             )
         ]
 
-    def _sync_dkim_from_actuals(
+    def _sync_from_actuals(
         self,
         instance: models.MailInstance,
         paas_collection: builder.PaaSCollection,
     ) -> None:
-        """Surface the DKIM public key discovered on the data plane.
-
-        The configure script generates the key on the node; the DP agent
-        reports it back on the actual ``mail_instance_node`` resource. Copy it
-        onto the user-facing instance so it can be read via the API and
-        published in DNS. The framework persists the instance afterwards.
-        """
+        """Reconcile readiness and DKIM from the VM and its mail agent."""
+        try:
+            nodeset = instance.get_actual_nodeset()
+        except storage_exceptions.RecordNotFound:
+            return
+        if nodeset.status != MailStatus.ACTIVE.value:
+            return
         for actual in paas_collection.actuals():
             if actual is None:
                 continue
             pubkey = getattr(actual, "dkim_public_key", "") or ""
+            if instance.mode == actual.mode and instance.ipsv4:
+                observed_status = actual.status
+                if (
+                    observed_status == MailStatus.ACTIVE.value
+                    and instance.version.supports_mailbox
+                    and not pubkey
+                ):
+                    if instance.status == MailStatus.ACTIVE.value:
+                        instance.status = MailStatus.IN_PROGRESS.value
+                    continue
+                if observed_status in (MailStatus.ACTIVE.value, MailStatus.ERROR.value):
+                    instance.status = observed_status
+                if (
+                    observed_status == MailStatus.ACTIVE.value
+                    and instance.mode == MailMode.MAILBOX.value
+                ):
+                    Mailbox.record_applied(instance, actual.mailboxes)
             selector = getattr(actual, "dkim_selector", "") or ""
             if pubkey and (
                 instance.dkim_public_key != pubkey or instance.dkim_selector != selector
@@ -127,5 +153,14 @@ class MailInstanceBuilder(PaaSBuilder):
         instance: models.MailInstance,
         paas_collection: builder.PaaSCollection,
     ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
-        self._sync_dkim_from_actuals(instance, paas_collection)
+        self._sync_from_actuals(instance, paas_collection)
+        return self.actualize_paas_objects(instance, paas_collection)
+
+    def actualize_paas_objects_source_master(
+        self,
+        instance: models.MailInstance,
+        master_instance: ua_models.InstanceWithDerivativesMixin,
+        paas_collection: builder.PaaSCollection,
+    ) -> tp.Collection[ua_models.TargetResourceKindAwareMixin]:
+        self._sync_from_actuals(instance, paas_collection)
         return self.actualize_paas_objects(instance, paas_collection)

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail Valkey local cache
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+
+[Service]
+Type=simple
+Restart=on-failure
+User=exordos-mail-cache
+Group=exordos-mail-cache
+RuntimeDirectory=exordos-mail-valkey
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/lib/exordos-mail/valkey-server --port 0 --unixsocket /run/exordos-mail-valkey/valkey.sock --unixsocketperm 770 --dir /persist/mail/valkey --appendonly yes --daemonize no

@@ -12,8 +12,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import hashlib
 import typing as tp
 import uuid as sys_uuid
+from importlib.resources import files
 from typing import ClassVar
 
 from gcl_sdk.agents.universal.dm import models as ua_models
@@ -45,6 +47,7 @@ class MailInstance(models.MailInstance, ua_models.InstanceWithDerivativesMixin):
                 "cpu",
                 "ram",
                 "disk_size",
+                "mode",
                 "version",
                 "project_id",
             )
@@ -73,6 +76,26 @@ class MailInstance(models.MailInstance, ua_models.InstanceWithDerivativesMixin):
             on_change=self.OnReloadFunc,
         )
         return config
+
+    def create_upgrade_check(self, node_uuid: sys_uuid.UUID, project_id):
+        image = hashlib.sha256(self.version.image.encode()).hexdigest()
+        path = f"/run/exordos-mail-upgrade-{image}"
+        return sdk_models.Config(
+            uuid=sys_uuid.uuid5(self.uuid, f"upgrade-{node_uuid}-{image}"),
+            name=f"mail image upgrade {node_uuid}",
+            project_id=project_id,
+            status=sdk_c.InstanceStatus.NEW.value,
+            target=sdk_models.NodeTarget(node=node_uuid),
+            body=sdk_models.TextBodyConfig(
+                content=files("exordos_mail.dataplane")
+                .joinpath("legacy_keys.sh")
+                .read_text()
+            ),
+            path=path,
+            on_change=sdk_models.OnChangeShell(
+                command=(f"bash {path} prepare-root || {{ unlink {path}; exit 1; }}")
+            ),
+        )
 
     def get_infra(
         self,

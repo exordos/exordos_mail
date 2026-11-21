@@ -45,6 +45,12 @@ resources:
       name: "exordos_mail.account.delete"
     mail_version_read:
       name: "exordos_mail.mail_version.read"
+    mailbox_create:
+      name: "exordos_mail.mailbox.create"
+    mailbox_read:
+      name: "exordos_mail.mailbox.read"
+    mailbox_update:
+      name: "exordos_mail.mailbox.update"
 
   # Bind each permission to the owner role (726f6c65-...-0002) in the metapaas
   # project (4d657461-...-0002). Any user granted owner in that project can use
@@ -86,6 +92,18 @@ resources:
       role: "726f6c65-0000-0000-0000-000000000002"
       permission: $core.iam.permissions.$mail_version_read:uuid
       project_id: "4d657461-0000-0000-0000-000000000002"
+    mailbox_create_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mailbox_create:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mailbox_read_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mailbox_read:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
+    mailbox_update_binding:
+      role: "726f6c65-0000-0000-0000-000000000002"
+      permission: $core.iam.permissions.$mailbox_update:uuid
+      project_id: "4d657461-0000-0000-0000-000000000002"
 
   # Mail dataplane version catalog entry. `description` carries the metapaas
   # project id for the core-agent version filter.
@@ -93,7 +111,8 @@ resources:
     exim4_1:
       name: "exim4_1"
       description: "12345678-c625-4fee-81d5-f691897b8142"
-      image: "{{ images.exordos_metapaas_mail_dp }}"
+      image: "{{ images.exordos_metapaas_mail_dp_raw_zst }}"
+      supports_mailbox: true
 
 exports:
   exim4_1:

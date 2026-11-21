@@ -33,6 +33,173 @@ BOOTSTRAP = "exordos-bootstrap.service"
 BASE_AGENT_DROPIN = "exordos-universal-agent.service.d/20-mail-bootstrap.conf"
 
 
+def _self_signed(
+    path: Path,
+    subject: str,
+    *,
+    days: int = 1,
+    san: str | None = None,
+    reuse_key: bool = False,
+) -> None:
+    key = str(path.with_suffix(".key"))
+    key_args = (
+        ["-key", key]
+        if reuse_key
+        else ["-newkey", "rsa:2048", "-nodes", "-keyout", key]
+    )
+    command = [
+        "openssl",
+        "req",
+        "-x509",
+        "-sha256",
+        *key_args,
+        "-days",
+        str(days),
+        "-subj",
+        subject,
+        "-out",
+        str(path.with_suffix(".crt")),
+    ]
+    if san is not None:
+        command.extend(["-addext", f"subjectAltName={san}"])
+    subprocess.run(command, capture_output=True, check=True)
+
+
+def _verify_certificate(cert: Path, ca: Path, *options: str) -> None:
+    subprocess.run(
+        ["openssl", "verify", "-CAfile", str(ca), *options, str(cert)],
+        capture_output=True,
+        check=True,
+    )
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="requires OpenSSL")
+@pytest.mark.parametrize("factory_domain", ["example.test", "Example.TEST.", None])
+def test_rotate_imported_smtp_certificate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, factory_domain: str | None
+) -> None:
+    cert, key = tmp_path / "tx.crt", tmp_path / "tx.key"
+    subject = (
+        f"/CN={factory_domain}/O={factory_domain}/C=US"
+        if factory_domain
+        else "/CN=example.test"
+    )
+    _self_signed(tmp_path / "tx", subject, days=9000)
+    legacy_cert, legacy_key = cert.read_bytes(), key.read_bytes()
+    (tmp_path / "rx.key").write_bytes(legacy_key)
+    systemctl = tmp_path / "systemctl"
+    calls = tmp_path / "systemctl.log"
+    systemctl.write_text('#!/bin/sh\nprintf "%s\\n" "$1" >> "$CALLS"\n')
+    systemctl.chmod(0o755)
+    monkeypatch.setenv("CALLS", str(calls))
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    config = [
+        "bash",
+        str(ROOT / "exordos/images/mailbox_tls.sh"),
+        "example.test",
+        str(tmp_path),
+    ]
+
+    subprocess.run(config, capture_output=True, check=True)
+    assert cert.read_bytes() == legacy_cert
+    rotate = [*config, "--migrate-legacy-tx"]
+    backup = tmp_path / "tx-legacy.crt"
+
+    def assert_rotation_rejected(error: bytes) -> None:
+        files = (cert, key, backup)
+        before = {path: path.read_bytes() for path in files if path.exists()}
+        result = subprocess.run(rotate, capture_output=True, check=False)
+        assert result.returncode == 1
+        assert error in result.stderr
+        assert {path: path.read_bytes() for path in files if path.exists()} == before
+        assert not calls.exists()
+
+    if factory_domain is None:
+        assert_rotation_rejected(b"image-generated Exim certificate")
+        _self_signed(tmp_path / "tx", "/CN=Exordos Mail tx", days=90, reuse_key=True)
+        assert key.read_bytes() == legacy_key
+        assert_rotation_rejected(
+            b"original Exim certificate or a verified prior migration"
+        )
+        return
+
+    if factory_domain == "example.test":
+        key.write_bytes((tmp_path / "ca.key").read_bytes())
+        assert_rotation_rejected(b"matching certificate and private key")
+        key.write_bytes(legacy_key)
+
+        backup.write_bytes(b"existing archived certificate")
+        assert_rotation_rejected(b"existing legacy archive")
+        backup.write_bytes(legacy_cert)
+
+    subprocess.run(rotate, capture_output=True, check=True)
+    assert key.read_bytes() == legacy_key
+    assert backup.read_bytes() == legacy_cert
+    assert calls.read_text() == "try-restart\n"
+    for host in ("example.test", "mail.example.test", "localhost"):
+        _verify_certificate(
+            cert,
+            tmp_path / "ca.crt",
+            "-x509_strict",
+            "-purpose",
+            "sslserver",
+            "-verify_hostname",
+            host,
+        )
+    rotated = cert.read_bytes()
+    subprocess.run(rotate, capture_output=True, check=True)
+    assert cert.read_bytes() == rotated
+    assert calls.read_text() == "try-restart\n"
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="requires OpenSSL")
+def test_mailbox_renews_legacy_tls_and_keeps_its_ca(tmp_path: Path) -> None:
+    for role in ("rx", "tx"):
+        _self_signed(
+            tmp_path / role,
+            "/CN=mail.example.test",
+            san="DNS:mail.example.test,DNS:localhost",
+        )
+    keys = {path: path.read_bytes() for path in tmp_path.glob("*.key")}
+    renewal = [
+        "bash",
+        str(ROOT / "exordos/images/mailbox_tls.sh"),
+        "example.test",
+        str(tmp_path),
+    ]
+    legacy = {path: path.read_bytes() for path in tmp_path.glob("*.crt")}
+    subprocess.run([*renewal, "--prepare-ca"], capture_output=True, check=True)
+    assert all(path.read_bytes() == contents for path, contents in legacy.items())
+    ca = (tmp_path / "ca.crt").read_bytes()
+    subprocess.run(renewal, capture_output=True, check=True)
+    assert (tmp_path / "ca.crt").read_bytes() == ca
+    assert all(path.read_bytes() == contents for path, contents in keys.items())
+    for role in ("rx", "tx"):
+        _verify_certificate(
+            tmp_path / f"{role}.crt",
+            tmp_path / "ca.crt",
+            "-verify_hostname",
+            "mail.example.test",
+        )
+    certificates = {path: path.read_bytes() for path in tmp_path.glob("*.crt")}
+    subprocess.run(renewal, capture_output=True, check=True)
+    assert all(path.read_bytes() == contents for path, contents in certificates.items())
+    replacement = tmp_path / "replacement"
+    replacement.mkdir()
+    subprocess.run(
+        [*renewal[:-1], str(replacement), "--prepare-ca"],
+        capture_output=True,
+        check=True,
+    )
+    for name in ("ca.key", "ca.crt"):
+        (replacement / name).replace(tmp_path / name)
+    subprocess.run(renewal, capture_output=True, check=True)
+    for role in ("rx", "tx"):
+        certificate = tmp_path / f"{role}.crt"
+        assert certificate.read_bytes() != certificates[certificate]
+        _verify_certificate(certificate, tmp_path / "ca.crt")
+
+
 def unit_values(name: str, section: str, key: str) -> list[str]:
     """Keep repeated systemd directives (ConfigParser would lose assertions)."""
     values = []
@@ -375,3 +542,52 @@ def test_mail_env_producer_hook_fails_and_recovers_in_base_render_consumer(
     rendered.dump_to_dp()
     assert (bootstrap.directory / "configured").exists()
     assert bootstrap.calls()[-1] == f"systemctl restart {CONFIGURE}"
+
+
+@pytest.mark.skipif(shutil.which("openssl") is None, reason="requires OpenSSL")
+def test_bootstrap_imports_legacy_keys_without_overwriting(tmp_path: Path) -> None:
+    source = tmp_path / "etc" / "exim4"
+    (source / "dkim").mkdir(parents=True)
+    _self_signed(source / "exim", "/CN=legacy.example.test")
+    dkim = source / "dkim" / "platform.private"
+    dkim.write_bytes((source / "exim.key").read_bytes())
+    state = tmp_path / "persist" / "mail"
+    paths = {
+        dkim: state / "tx/platform.private",
+        source / "exim.key": state / "tls/tx.key",
+        source / "exim.crt": state / "tls/tx.crt",
+    }
+    import_keys = [
+        "bash",
+        str(ROOT / "exordos_mail/dataplane/legacy_keys.sh"),
+        "import",
+        str(source),
+        str(state),
+    ]
+    expected = {target: path.read_bytes() for path, target in paths.items()}
+
+    subprocess.run(import_keys, check=True)
+    for path, value in expected.items():
+        assert path.read_bytes() == value
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    for path in paths:
+        path.write_text("changed legacy file")
+    subprocess.run(import_keys, check=True)
+    assert all(path.read_bytes() == value for path, value in expected.items())
+
+
+def test_bootstrap_key_import_accepts_a_fresh_image(tmp_path: Path) -> None:
+    state = tmp_path / "persist" / "mail"
+    subprocess.run(
+        [
+            "bash",
+            str(ROOT / "exordos_mail/dataplane/legacy_keys.sh"),
+            "import",
+            str(tmp_path / "missing"),
+            str(state),
+        ],
+        check=True,
+    )
+    assert not (state / "tx/platform.private").exists()
+    assert not (state / "tls/tx.key").exists()

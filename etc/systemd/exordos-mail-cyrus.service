@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail Cyrus IMAP, LMTP and CalDAV
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+After=exordos-mail-saslauthd.service
+
+[Service]
+Type=simple
+Restart=on-failure
+ExecStart=/usr/sbin/cyrmaster -C /etc/imapd.conf -M /etc/cyrus.conf

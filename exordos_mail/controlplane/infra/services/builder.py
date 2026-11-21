@@ -13,6 +13,7 @@
 #    under the License.
 
 import logging
+import shlex
 import typing as tp
 import uuid as sys_uuid
 
@@ -23,6 +24,7 @@ from gcl_sdk.infra.dm import models as sdk_models
 from gcl_sdk.infra.services import builder
 from restalchemy.dm import filters as dm_filters
 
+from exordos_mail import constants
 from exordos_mail.controlplane.infra.dm import models
 
 LOG = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ MAIL_CONF_TEMPLATE = """\
 # Mail node environment configuration
 # Managed by Exordos mail control plane — do not edit manually
 MAIL_DOMAIN={domain}
+MAIL_MODE={mode}
 """
 
 
@@ -87,6 +90,54 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
             instance.status = sdk_c.InstanceStatus.IN_PROGRESS.value
             return (nodeset_target,) if nodeset_target is not None else ()
 
+        installed_image = next(
+            disk["image"]
+            for disk in nodeset_target.disk_spec.disks
+            if disk.get("label") == "root"
+        )
+        if installed_image != instance.version.image:
+            # Keep the old root and its mail configuration until the node has
+            # confirmed its durable state is ready for an image replacement.
+            if nodeset_actual is None or not nodeset_actual.nodes:
+                return infra.targets()
+            checks = [
+                instance.create_upgrade_check(sys_uuid.UUID(node), self._project_id)
+                for node in nodeset_actual.nodes
+            ]
+            ready = {
+                actual.uuid
+                for target, actual in infra.infra_objects
+                if target.get_resource_kind() == CONFIG_KIND
+                and actual is not None
+                and actual.status == sdk_c.InstanceStatus.ACTIVE.value
+            }
+            if not all(check.uuid in ready for check in checks):
+                keep = [
+                    target
+                    for target in infra.targets()
+                    if target.get_resource_kind() != CONFIG_KIND
+                    or target.path == constants.MAIL_ENV_FILE
+                ]
+                configured = {
+                    target.target.node
+                    for target in keep
+                    if target.get_resource_kind() == CONFIG_KIND
+                }
+                for node in nodeset_actual.nodes:
+                    node_uuid = sys_uuid.UUID(node)
+                    if node_uuid not in configured:
+                        keep.append(
+                            instance._create_config(
+                                node_uuid,
+                                self._project_id,
+                                MAIL_CONF_TEMPLATE.format(
+                                    domain=shlex.quote(instance.domain),
+                                    mode="smtp_only",
+                                ),
+                            )
+                        )
+                return (*keep, *checks)
+
         # Keep NodeSet target in sync with current instance spec
         nodeset_target.cores = instance.cpu
         nodeset_target.ram = instance.ram
@@ -134,16 +185,22 @@ class CoreInfraBuilder(builder.CoreInfraBuilder):
         # Mail is single-node; generate config for each provisioned node
         new_configs = []
         for node_uuid_str in nodeset_actual.nodes:
-            content = MAIL_CONF_TEMPLATE.format(domain=instance.domain)
+            content = MAIL_CONF_TEMPLATE.format(
+                domain=shlex.quote(instance.domain), mode=instance.mode
+            )
             config = instance._create_config(
                 sys_uuid.UUID(node_uuid_str), self._project_id, content
             )
             new_configs.append(config)
 
         try:
-            instance.status = sdk_c.InstanceStatus(nodeset_actual.status).value
+            node_status = sdk_c.InstanceStatus(nodeset_actual.status)
         except ValueError:
-            instance.status = sdk_c.InstanceStatus.IN_PROGRESS.value
+            node_status = sdk_c.InstanceStatus.IN_PROGRESS
+        if node_status != sdk_c.InstanceStatus.ACTIVE:
+            instance.status = node_status.value
+        if instance.ipsv4:
+            instance.endpoints = instance.get_service_endpoints()
 
         return (nodeset_target, *new_configs)
 

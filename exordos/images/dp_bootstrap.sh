@@ -27,6 +27,9 @@ prepare_persistent_disk "$PERSISTENT_DISK" "$PERSISTENT_MOUNT" "xfs"
 
 if [[ -n "$PERSISTENT_DISK" ]]; then
     migrate_to_persistent_restart "/var/log" "${PERSISTENT_MOUNT}/var/log" "systemd-journald rsyslog"
+    if [[ -x /usr/local/lib/exordos-mail/legacy-keys ]]; then
+        sudo /usr/local/lib/exordos-mail/legacy-keys import /etc/exim4 /persist/mail
+    fi
     persist_migrate_complete
 fi
 

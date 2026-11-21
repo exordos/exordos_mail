@@ -56,6 +56,7 @@ class MailInstanceController(
             default=field_p.Permissions.RW,
             fields={
                 "status": {constants.ALL: field_p.Permissions.RO},
+                "endpoints": {constants.ALL: field_p.Permissions.RO},
                 "ipsv4": {constants.ALL: field_p.Permissions.RO},
                 "dkim_public_key": {constants.ALL: field_p.Permissions.RO},
                 "dkim_selector": {constants.ALL: field_p.Permissions.RO},
@@ -94,6 +95,38 @@ class MailAccountController(
                 },
                 "password_hash": {
                     constants.ALL: field_p.Permissions.HIDDEN,
+                },
+            },
+        ),
+    )
+
+
+class MailboxController(
+    iam_controllers.NestedPolicyBasedController,
+    ra_controllers.BaseNestedResourceControllerPaginated,
+):
+    __policy_service_name__ = "exordos_mail"
+    __policy_name__ = "mailbox"
+    __pr_name__ = "instance"
+
+    __resource__ = ra_resources.ResourceByRAModel(
+        model_class=models.Mailbox,
+        convert_underscore=False,
+        process_filters=True,
+        fields_permissions=field_p.FieldsPermissions(
+            default=field_p.Permissions.RW,
+            fields={
+                "address": {constants.ALL: field_p.Permissions.RO},
+                "status": {constants.ALL: field_p.Permissions.RO},
+                "password_hash": {constants.ALL: field_p.Permissions.HIDDEN},
+                "local_part": {
+                    constants.ALL: field_p.Permissions.RO,
+                    constants.CREATE: field_p.Permissions.RW,
+                },
+                "password": {
+                    constants.ALL: field_p.Permissions.HIDDEN,
+                    constants.CREATE: field_p.Permissions.RW,
+                    constants.UPDATE: field_p.Permissions.RW,
                 },
             },
         ),

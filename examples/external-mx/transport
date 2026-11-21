@@ -1,0 +1,2 @@
+# Mail domain       Private SMTP endpoint, whose name is in the RX certificate
+example.org         smtp:[rx.internal.example.org]:2525

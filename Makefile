@@ -1,6 +1,8 @@
 SHELL := bash
 SSH_KEY ?= ~/.ssh/id_ed25519.pub
 
+.PHONY: build
+
 all: help
 
 help:
@@ -13,7 +15,9 @@ help:
 	@echo "typecheck        - run mypy"
 
 build:
-	exordos build -i $(SSH_KEY) -f .
+	# A linked worktree's Git metadata is unavailable inside the build VM.
+	@if test -f .git; then bash exordos/images/build_wheel.sh; fi
+	exordos build -c exordos/exordos.yaml -i $(SSH_KEY) -f "$(CURDIR)"
 
 wheel:
 	tox -e wheel

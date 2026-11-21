@@ -51,6 +51,9 @@ mypy = [
     "mypy",
 ]
 
+[dependency-groups]
+docs = ["zensical>=0.0.67,<0.0.68"]
+
 [tool.uv]
 package = true
 
@@ -103,4 +106,4 @@ where = ["."]
 include = ["exordos_mail*"]
 
 [tool.setuptools.package-data]
-exordos_mail = ["migrations/*.py"]
+exordos_mail = ["migrations/*.py", "dataplane/legacy_keys.sh"]

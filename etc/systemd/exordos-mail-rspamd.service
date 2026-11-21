@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Exordos Mail Rspamd inbound checks
+RequiresMountsFor=/persist
+AssertPathIsMountPoint=/persist
+After=exordos-mail-valkey.service
+
+[Service]
+Type=simple
+Restart=on-failure
+User=_rspamd
+Group=_rspamd
+SupplementaryGroups=exordos-mail-cache
+RuntimeDirectory=exordos-mail-rspamd
+RuntimeDirectoryMode=0750
+CacheDirectory=exordos-mail-rspamd
+CacheDirectoryMode=0750
+ExecStart=/usr/bin/rspamd -f
